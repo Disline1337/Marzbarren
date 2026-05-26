@@ -63,7 +63,7 @@ class XRayCore:
         if "PrivateKey" in kv and ("Password" in kv or "Password (PublicKey)" in kv):
             return {
                 "private_key": kv["PrivateKey"],
-                "public_key": kv["Password"]
+                "public_key": kv["Password"] if kv["Password"] else kv["Password (PublicKey)"]
             }
 
         return None
