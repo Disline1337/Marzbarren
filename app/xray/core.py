@@ -42,14 +42,31 @@ class XRayCore:
         cmd = [self.executable_path, "x25519"]
         if private_key:
             cmd.extend(['-i', private_key])
-        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT).decode('utf-8')
-        m = re.match(r'Private key: (.+)\nPublic key: (.+)', output)
-        if m:
-            private, public = m.groups()
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        output = result.stdout
+
+        # Парсим вывод в словарь key: value
+        kv = {}
+        for line in output.strip().splitlines():
+            if ":" in line:
+                k, v = line.split(":", 1)
+                kv[k.strip()] = v.strip()
+
+        # Старый формат (xray < v25.3.6)
+        if "Private key" in kv and "Public key" in kv:
             return {
-                "private_key": private,
-                "public_key": public
+                "private_key": kv["Private key"],
+                "public_key": kv["Public key"]
             }
+
+        # Новый формат (xray >= v25.3.6): PrivateKey / Password / Hash32
+        if "PrivateKey" in kv and "Password" in kv:
+            return {
+                "private_key": kv["PrivateKey"],
+                "public_key": kv["Password"]
+            }
+
+        return None
 
     def __capture_process_logs(self):
         def capture_and_debug_log():
