@@ -60,10 +60,16 @@ class XRayCore:
             }
 
         # Новый формат (xray >= v25.3.6): PrivateKey / Password / Hash32
-        if "PrivateKey" in kv and ("Password" in kv or "Password (PublicKey)" in kv):
+        if "PrivateKey" in kv and "Password" in kv:
             return {
                 "private_key": kv["PrivateKey"],
-                "public_key": kv["Password"] if kv["Password"] else kv["Password (PublicKey)"]
+                "public_key": kv["Password"]
+            }
+
+        if "PrivateKey" in kv and "Password (PublicKey)" in kv:
+            return {
+                "private_key": kv["PrivateKey"],
+                "public_key": kv["Password (PublicKey)"]
             }
 
         return None
