@@ -123,7 +123,7 @@ docker compose pull
 docker compose up -d
 ```
 
-Pushing a git tag `v0.9.0` publishes `ghcr.io/disline1337/marzbarren:0.9.0` and `:latest`. The upstream installer below still installs `gozargah/marzban`, not this fork.
+In GitHub, open Actions, enable workflows once, then run Build manually. That publishes `ghcr.io/disline1337/marzbarren:0.9.0` and `:latest` from `__version__`. No git tag or registry token is required. The upstream installer below still installs `gozargah/marzban`, not this fork.
 
 
 Run the following command to install Marzban with SQLite database:

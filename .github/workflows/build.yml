@@ -35,15 +35,20 @@ jobs:
         run: |
           owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
           image="ghcr.io/${owner}/marzbarren"
-          ref="$GITHUB_REF_NAME"
-          version="${ref#v}"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="$(sed -n 's/^__version__ = "\(.*\)"/\1/p' app/__init__.py)"
+          fi
+          if [ -z "$version" ]; then
+            echo "Could not determine image version" >&2
+            exit 1
+          fi
           {
             echo "tags<<EOF"
             echo "${image}:latest"
             echo "${image}:${version}"
-            if [ "$ref" != "$version" ]; then
-              echo "${image}:${ref}"
-            fi
+            echo "${image}:v${version}"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -54,3 +59,4 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
