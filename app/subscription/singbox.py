@@ -6,6 +6,7 @@ from app.utils.helpers import UUIDEncoder
 from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun
+from app.models.proxy import legacy_client_cannot_represent, supports_vless_flow
 from app.templates import render_template
 from config import (
     MUX_TEMPLATE,
@@ -237,7 +238,10 @@ class SingBoxConfiguration(str):
             "server_port": port,
         }
 
-        if net in ('tcp', 'raw', 'kcp') and headers != 'http' and (tls or tls != 'none'):
+        if type == 'vless':
+            if flow:
+                config["flow"] = flow
+        elif net in ('tcp', 'raw', 'kcp') and headers != 'http' and (tls or tls != 'none'):
             if flow:
                 config["flow"] = flow
 
@@ -288,8 +292,9 @@ class SingBoxConfiguration(str):
         net = inbound["network"]
         path = inbound["path"]
 
-        # not supported by sing-box
-        if net in ("kcp", "splithttp", "xhttp") or (net == "quic" and inbound["header_type"] != "none"):
+        if legacy_client_cannot_represent(inbound) or net in ("kcp", "splithttp", "xhttp") or (
+            net == "quic" and inbound["header_type"] != "none"
+        ):
             return
 
         if net in ("grpc", "gun"):
@@ -307,7 +312,7 @@ class SingBoxConfiguration(str):
             port=inbound['port'],
             net=net,
             tls=(inbound['tls']),
-            flow=settings.get('flow', ''),
+            flow=settings.get('flow', '') if inbound['protocol'] != 'vless' or supports_vless_flow(inbound) else '',
             sni=inbound['sni'],
             host=inbound['host'],
             path=path,

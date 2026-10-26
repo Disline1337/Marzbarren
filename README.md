@@ -91,12 +91,14 @@ Marzban is user-friendly, feature-rich and reliable. It lets you to create diffe
 - Fully **REST API** backend
 - [**Multiple Nodes**](#marzban-node) support (for infrastructure distribution & scalability)
 - Supports protocols **Vmess**, **VLESS**, **Trojan** and **Shadowsocks**
+- VLESS Encryption, REALITY ML-DSA verification, and XHTTP client options in Hosts and subscriptions. Server private keys stay in Core Settings. Exporters omit nodes they cannot represent instead of stripping required security.
 - **Multi-protocol** for a single user
 - **Multi-user** on a single inbound
 - **Multi-inbound** on a **single port** (fallbacks support)
 - **Traffic** and **expiry date** limitations
 - **Periodic** traffic limit (e.g. daily, weekly, etc.)
 - **Subscription link** compatible with **V2ray** _(such as V2RayNG, SingBox, Nekoray, etc.)_, **Clash** and **ClashMeta**
+- **Client routing** profiles for Happ, INCY, Koala Clash, and Clash Party
 - Automated **Share link** and **QRcode** generator
 - System monitoring and **traffic statistics**
 - Customizable xray configuration
@@ -107,6 +109,22 @@ Marzban is user-friendly, feature-rich and reliable. It lets you to create diffe
 - **Multi-admin** support (WIP)
 
 # Installation guide
+
+This fork is pulled as a normal image, not built from the upstream installer:
+
+```bash
+docker pull ghcr.io/disline1337/marzbarren:0.9.0
+```
+
+`docker-compose.yml` already uses that tag. After the image exists:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Pushing a git tag `v0.9.0` publishes `ghcr.io/disline1337/marzbarren:0.9.0` and `:latest`. The upstream installer below still installs `gozargah/marzban`, not this fork.
+
 
 Run the following command to install Marzban with SQLite database:
 

@@ -80,6 +80,29 @@ def get_hosts(
     return hosts
 
 
+
+def _modern_host_errors(inbound: dict, host: ProxyHost) -> dict:
+    errors = {}
+    is_vless = inbound.get("protocol") == ProxyTypes.VLESS
+    is_xhttp = inbound.get("network") in ("xhttp", "splithttp")
+    if host.vless_encryption is not None and not is_vless:
+        errors["vless_encryption"] = "VLESS encryption is only valid for VLESS inbounds"
+    if not is_xhttp:
+        if host.xhttp_mode is not None:
+            errors["xhttp_mode"] = "XHTTP settings are only valid for XHTTP inbounds"
+        if host.xhttp_extra is not None:
+            errors["xhttp_extra"] = "XHTTP settings are only valid for XHTTP inbounds"
+    if host.is_disabled:
+        return errors
+    required = bool(inbound.get("vless_encryption_required"))
+    encryption = host.vless_encryption
+    if is_vless and required and encryption in (None, "none"):
+        errors["vless_encryption"] = "VLESS encryption is required for this inbound"
+    elif is_vless and not required and encryption not in (None, "none"):
+        errors["vless_encryption"] = "VLESS encryption does not match this inbound"
+    return errors
+
+
 @router.put(
     "/hosts", response_model=Dict[str, List[ProxyHost]], responses={403: responses._403}
 )
@@ -94,6 +117,15 @@ def modify_hosts(
             raise HTTPException(
                 status_code=400, detail=f"Inbound {inbound_tag} doesn't exist"
             )
+
+    errors = {}
+    for inbound_tag, hosts in modified_hosts.items():
+        inbound = xray.config.inbounds_by_tag[inbound_tag]
+        for host in hosts:
+            for field, message in _modern_host_errors(inbound, host).items():
+                errors.setdefault(field, message)
+    if errors:
+        raise HTTPException(status_code=422, detail=errors)
 
     for inbound_tag, hosts in modified_hosts.items():
         crud.update_hosts(db, inbound_tag, hosts)

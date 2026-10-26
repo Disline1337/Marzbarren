@@ -91,7 +91,10 @@
         remaining)
         {% endif %}</p>
 
-    {% if user.status == 'active' %}
+    {% if links_hidden %}
+    <h2>Links</h2>
+    <p>Proxy links are hidden until a subscription client registers this device.</p>
+    {% elif user.status == 'active' %}
     <h2>Links:</h2>
     <ul>
         {% for link in user.links %}

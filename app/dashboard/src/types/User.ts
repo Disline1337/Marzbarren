@@ -50,6 +50,22 @@ export type User = {
   inbounds: UserInbounds;
   note: string;
   online_at: string;
+  /** null = server fallback; 0 = unlimited; N = max devices */
+  hwid_device_limit?: number | null;
+  hwid_device_count?: number;
+};
+
+export type HwidDevice = {
+  hwid: string;
+  user_id: number;
+  username?: string | null;
+  platform?: string | null;
+  os_version?: string | null;
+  device_model?: string | null;
+  user_agent?: string | null;
+  request_ip?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 export type UserCreate = Pick<
@@ -63,7 +79,9 @@ export type UserCreate = Pick<
   | "username"
   | "status"
   | "note"
->;
+> & {
+  hwid_device_limit?: number | null;
+};
 
 export type UserApi = {
   discord_webook: string;

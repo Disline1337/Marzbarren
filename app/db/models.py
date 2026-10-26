@@ -12,6 +12,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
+    Text,
     Table,
     UniqueConstraint,
     func,
@@ -95,9 +96,17 @@ class User(Base):
     edit_at = Column(DateTime, nullable=True, default=None)
     last_status_change = Column(DateTime, default=datetime.utcnow, nullable=True)
 
+    # NULL = use global HWID_FALLBACK_DEVICE_LIMIT; 0 = unlimited; N>0 = max devices
+    hwid_device_limit = Column(Integer, nullable=True, default=None)
+
     next_plan = relationship(
         "NextPlan",
         uselist=False,
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+    hwid_devices = relationship(
+        "HwidUserDevice",
         back_populates="user",
         cascade="all, delete-orphan"
     )
@@ -120,6 +129,10 @@ class User(Base):
             sum([log.used_traffic_at_reset for log in self.usage_logs])
             + self.used_traffic
         )
+
+    @property
+    def hwid_device_count(self) -> int:
+        return len(self.hwid_devices) if self.hwid_devices is not None else 0
 
     @property
     def last_traffic_reset_time(self):
@@ -171,6 +184,26 @@ class NextPlan(Base):
     fire_on_either = Column(Boolean, nullable=False, default=True, server_default='0')
 
     user = relationship("User", back_populates="next_plan")
+
+
+class HwidUserDevice(Base):
+    """Registered client devices for HWID device limit (Remnawave-compatible)."""
+    __tablename__ = "hwid_user_devices"
+    __table_args__ = (
+        UniqueConstraint("hwid", "user_id", name="uq_hwid_user"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    hwid = Column(String(64), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    user = relationship("User", back_populates="hwid_devices")
+    platform = Column(String(64), nullable=True, default=None)
+    os_version = Column(String(64), nullable=True, default=None)
+    device_model = Column(String(128), nullable=True, default=None)
+    user_agent = Column(String(512), nullable=True, default=None)
+    request_ip = Column(String(64), nullable=True, default=None)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class UserTemplate(Base):
@@ -264,6 +297,9 @@ class ProxyHost(Base):
     noise_setting = Column(String(2000), nullable=True)
     random_user_agent = Column(Boolean, nullable=False, default=False, server_default='0')
     use_sni_as_host = Column(Boolean, nullable=False, default=False, server_default="0")
+    vless_encryption = Column(Text, nullable=True)
+    xhttp_mode = Column(String(16), nullable=True)
+    xhttp_extra = Column(JSON, nullable=True)
 
 
 class System(Base):
@@ -350,3 +386,11 @@ class NotificationReminder(Base):
     threshold = Column(Integer, nullable=True)
     expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ClientRoutingSettings(Base):
+    __tablename__ = "client_routing_settings"
+
+    id = Column(Integer, primary_key=True)
+    settings = Column(JSON, nullable=False)
+    happ_updated_at = Column(BigInteger, nullable=False)

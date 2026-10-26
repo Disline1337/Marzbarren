@@ -1,3 +1,4 @@
+import copy
 from random import randint
 from typing import TYPE_CHECKING, Dict, Sequence
 
@@ -63,6 +64,9 @@ def hosts(storage: dict):
                     "noise_setting": host.noise_setting,
                     "random_user_agent": host.random_user_agent,
                     "use_sni_as_host": host.use_sni_as_host,
+                    "vless_encryption": host.vless_encryption,
+                    "xhttp_mode": host.xhttp_mode,
+                    "xhttp_extra": None if host.xhttp_extra is None else copy.deepcopy(host.xhttp_extra),
                 } for host in inbound_hosts if not host.is_disabled
             ]
 

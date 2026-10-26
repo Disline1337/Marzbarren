@@ -1,6 +1,7 @@
 import {
   Accordion,
   AccordionButton,
+  Badge,
   AccordionItem,
   AccordionPanel,
   Box,
@@ -185,6 +186,38 @@ export const Sort: FC<SortType> = ({ sort, column }) => {
     );
   return null;
 };
+
+function deviceCap(limit?: number | string | null): number | null {
+  if (limit === "" || limit === null || limit === undefined) return null;
+  const value = Number(limit);
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function deviceUsage(
+  count?: number | null,
+  limit?: number | string | null
+): string | null {
+  const used = count ?? 0;
+  const cap = deviceCap(limit);
+  if (!used && cap === null) return null;
+  if (cap === 0) return `${used}/∞`;
+  if (cap === null) return String(used);
+  return `${used}/${cap}`;
+}
+
+const DeviceUsage: FC<{ user: User }> = ({ user }) => {
+  const label = deviceUsage(user.hwid_device_count, user.hwid_device_limit);
+  if (!label) return null;
+  const cap = deviceCap(user.hwid_device_limit);
+  const full = cap !== null && cap > 0 && (user.hwid_device_count ?? 0) >= cap;
+  return (
+    <Tooltip label={t("usersTable.hwidDevices")}>
+      <Badge colorScheme={full ? "red" : "gray"} fontSize="0.65em">
+        {label}
+      </Badge>
+    </Tooltip>
+  );
+};
 type UsersTableProps = {} & TableProps;
 export const UsersTable: FC<UsersTableProps> = (props) => {
   const {
@@ -356,6 +389,7 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                         <div className="flex-status">
                           <OnlineBadge lastOnline={user.online_at} />
                           <Text isTruncated>{user.username}</Text>
+                          <DeviceUsage user={user} />
                         </div>
                       </Td>
                       <Td borderBottom={0} minW="50px" pl={0} pr={0}>
@@ -593,7 +627,19 @@ export const UsersTable: FC<UsersTableProps> = (props) => {
                   <Td minW="140px">
                     <div className="flex-status">
                       <OnlineBadge lastOnline={user.online_at} />
-                      {user.username}
+                      <Button
+                        variant="link"
+                        color="inherit"
+                        fontSize="inherit"
+                        fontWeight="inherit"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEditingUser(user);
+                        }}
+                      >
+                        {user.username}
+                      </Button>
+                      <DeviceUsage user={user} />
                       <OnlineStatus lastOnline={user.online_at} />
                     </div>
                   </Td>

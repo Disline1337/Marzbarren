@@ -36,6 +36,7 @@ i18n
                 caches: ["localStorage", "sessionStorage", "cookie"],
             },
             backend: {
+                requestOptions: { cache: "no-cache" },
                 loadPath: joinPaths([
                     import.meta.env.BASE_URL,
                     `statics/locales/{{lng}}.json`,

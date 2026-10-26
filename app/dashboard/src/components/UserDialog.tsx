@@ -55,6 +55,7 @@ import {
 import { relativeExpiryDate } from "utils/dateFormatter";
 import { z } from "zod";
 import { DeleteIcon } from "./DeleteUserModal";
+import { HwidDevices } from "./HwidDevices";
 import { Icon } from "./Icon";
 import { Input } from "./Input";
 import { RadioGroup } from "./RadioGroup";
@@ -116,6 +117,7 @@ const getDefaultValues = (): FormType => {
     status: "active",
     on_hold_expire_duration: null,
     note: "",
+    hwid_device_limit: null,
     inbounds,
     proxies: {
       vless: { id: "", flow: "" },
@@ -182,6 +184,16 @@ const baseSchema = {
     });
     return ins;
   }),
+  hwid_device_limit: z
+    .union([z.string(), z.number(), z.null()])
+    .optional()
+    .transform((v) => {
+      if (v === "" || v === undefined || v === null) return null;
+      return Number(v);
+    })
+    .refine((v) => v === null || (Number.isSafeInteger(v) && v >= 0), {
+      message: "userDialog.hwidInvalidLimit",
+    }),
 };
 
 const schema = z.discriminatedUnion("status", [
@@ -302,8 +314,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
           : "no_reset",
       status:
         values.status === "active" ||
-          values.status === "disabled" ||
-          values.status === "on_hold"
+        values.status === "disabled" ||
+        values.status === "on_hold"
           ? values.status
           : "active",
     };
@@ -458,7 +470,10 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                     return (
                                       <Tooltip
                                         placement="top"
-                                        label={"status: " + t(`status.${field.value}`)}
+                                        label={
+                                          "status: " +
+                                          t(`status.${field.value}`)
+                                        }
                                         textTransform="capitalize"
                                       >
                                         <Box>
@@ -563,8 +578,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                   }}
                                   sx={{
                                     option: {
-                                      backgroundColor: colorMode === "dark" ? "#222C3B" : "white"
-                                    }
+                                      backgroundColor:
+                                        colorMode === "dark"
+                                          ? "#222C3B"
+                                          : "white",
+                                    },
                                   }}
                                 >
                                   {resetStrategy.map((s) => {
@@ -654,13 +672,13 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                         target: {
                                           value: date
                                             ? dayjs(
-                                              dayjs(date)
-                                                .set("hour", 23)
-                                                .set("minute", 59)
-                                                .set("second", 59)
-                                            )
-                                              .utc()
-                                              .valueOf() / 1000
+                                                dayjs(date)
+                                                  .set("hour", 23)
+                                                  .set("minute", 59)
+                                                  .set("second", 59)
+                                              )
+                                                .utc()
+                                                .valueOf() / 1000
                                             : 0,
                                           name: "expire",
                                         },
@@ -702,6 +720,47 @@ export const UserDialog: FC<UserDialogProps> = () => {
                         <FormErrorMessage>
                           {form.formState.errors?.note?.message}
                         </FormErrorMessage>
+                      </FormControl>
+
+                      <FormControl
+                        mb={"10px"}
+                        isInvalid={!!form.formState.errors.hwid_device_limit}
+                      >
+                        <FormLabel htmlFor="hwid-device-limit">
+                          {t("userDialog.hwidDeviceLimit")}
+                        </FormLabel>
+                        <Controller
+                          control={form.control}
+                          name="hwid_device_limit"
+                          render={({ field }) => (
+                            <Input
+                              id="hwid-device-limit"
+                              type="number"
+                              size="sm"
+                              borderRadius="6px"
+                              placeholder={t(
+                                "userDialog.hwidDeviceLimitPlaceholder"
+                              )}
+                              disabled={disabled}
+                              value={
+                                field.value === null ||
+                                field.value === undefined
+                                  ? ""
+                                  : String(field.value)
+                              }
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                field.onChange(v === "" ? null : v);
+                              }}
+                            />
+                          )}
+                        />
+                        <FormErrorMessage>
+                          {t("userDialog.hwidInvalidLimit")}
+                        </FormErrorMessage>
+                        <FormHelperText>
+                          {t("userDialog.hwidDeviceLimitHelp")}
+                        </FormHelperText>
                       </FormControl>
                     </Flex>
                     {error && (
@@ -784,6 +843,14 @@ export const UserDialog: FC<UserDialogProps> = () => {
                   </GridItem>
                 )}
               </Grid>
+              {isEditing && editingUser?.username && (
+                <HwidDevices
+                  key={editingUser.username}
+                  username={editingUser.username}
+                  disabled={disabled}
+                  limit={form.watch("hwid_device_limit")}
+                />
+              )}
               {error && (
                 <Alert
                   mt="3"

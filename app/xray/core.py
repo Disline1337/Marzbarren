@@ -6,7 +6,7 @@ from collections import deque
 from contextlib import contextmanager
 
 from app import logger
-from app.xray.config import XRayConfig
+
 from config import DEBUG
 
 
@@ -74,6 +74,26 @@ class XRayCore:
 
         return None
 
+    def get_mldsa65_verify(self, seed: str) -> str:
+        from app.models.proxy import is_mldsa65_verify
+
+        cmd = [self.executable_path, "mldsa65", "-i", seed]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+        except (OSError, subprocess.SubprocessError):
+            raise ValueError("Unable to derive REALITY verification key") from None
+        if result.returncode != 0:
+            raise ValueError("Unable to derive REALITY verification key")
+        verify = ""
+        for line in result.stdout.splitlines():
+            if line.startswith("Verify:"):
+                verify = line.split(":", 1)[1].strip()
+                break
+        if not is_mldsa65_verify(verify):
+            raise ValueError("Unable to derive REALITY verification key")
+        return verify
+
+
     def __capture_process_logs(self):
         def capture_and_debug_log():
             while self.process:
@@ -126,7 +146,7 @@ class XRayCore:
 
         return False
 
-    def start(self, config: XRayConfig):
+    def start(self, config: "XRayConfig"):
         if self.started is True:
             raise RuntimeError("Xray is started already")
 
@@ -170,7 +190,7 @@ class XRayCore:
         for func in self._on_stop_funcs:
             threading.Thread(target=func).start()
 
-    def restart(self, config: XRayConfig):
+    def restart(self, config: "XRayConfig"):
         if self.restarting is True:
             return
 

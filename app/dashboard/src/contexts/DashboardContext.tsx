@@ -26,6 +26,7 @@ export type InboundType = {
   network: string;
   tls: string;
   port?: number;
+  vless_encryption_required?: boolean;
 };
 export type Inbounds = Map<ProtocolType, InboundType[]>;
 
@@ -50,6 +51,7 @@ type DashboardStateType = {
   resetUsageUser: User | null;
   revokeSubscriptionUser: User | null;
   isEditingCore: boolean;
+  isEditingClientRouting: boolean;
   onCreateUser: (isOpen: boolean) => void;
   onEditingUser: (user: User | null) => void;
   onDeletingUser: (user: User | null) => void;
@@ -123,6 +125,7 @@ export const useDashboard = create(
     },
     inbounds: new Map(),
     isEditingCore: false,
+    isEditingClientRouting: false,
     refetchUsers: () => {
       fetchUsers(get().filters);
     },

@@ -18,6 +18,7 @@ import {
   CurrencyDollarIcon,
   DocumentMinusIcon,
   LinkIcon,
+  MapIcon,
   MoonIcon,
   SquaresPlusIcon,
   SunIcon,
@@ -51,6 +52,7 @@ const SettingsIcon = chakra(Bars3Icon, iconProps);
 const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
 const DonationIcon = chakra(CurrencyDollarIcon, iconProps);
 const HostsIcon = chakra(LinkIcon, iconProps);
+const RoutingIcon = chakra(MapIcon, iconProps);
 const NodesIcon = chakra(SquaresPlusIcon, iconProps);
 const NodesUsageIcon = chakra(ChartPieIcon, iconProps);
 const ResetUsageIcon = chakra(DocumentMinusIcon, iconProps);
@@ -150,6 +152,16 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
                     onClick={onEditingHosts.bind(null, true)}
                   >
                     {t("header.hostSettings")}
+                  </MenuItem>
+                  <MenuItem
+                    fontSize="sm"
+                    whiteSpace="normal"
+                    icon={<RoutingIcon />}
+                    onClick={() => {
+                      useDashboard.setState({ isEditingClientRouting: true });
+                    }}
+                  >
+                    {t("header.clientRouting")}
                   </MenuItem>
                   <MenuItem
                     maxW="170px"

@@ -11,7 +11,7 @@ from sqlalchemy import func
 
 from app.db import GetDB
 from app.db import models as db_models
-from app.models.proxy import ProxyTypes
+from app.models.proxy import ProxyTypes, supports_vless_flow
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
 from config import DEBUG, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
@@ -24,6 +24,72 @@ def merge_dicts(a, b):  # B will override A dictionary key and values
         else:
             a[key] = value
     return a
+
+
+def _vless_encryption_required(inbound: dict) -> bool:
+    decryption = inbound.get("settings", {}).get("decryption")
+    return (
+        inbound.get("protocol") == ProxyTypes.VLESS
+        and isinstance(decryption, str)
+        and decryption.strip() not in ("", "none")
+    )
+
+_XHTTP_CONTROL_KEYS = {"host", "path", "mode", "extra"}
+_XHTTP_SERVER_ONLY_KEYS = {
+    "scMaxBufferedPosts",
+    "scStreamUpServerSecs",
+    "serverMaxHeaderBytes",
+    "noSSEHeader",
+}
+_XHTTP_SECRET_KEYS = {"privateKey", "mldsa65Seed", "decryption", "clients", "certificates"}
+
+
+def _named_settings(stream: dict, *names: str) -> dict:
+    for name in names:
+        value = stream.get(name)
+        if isinstance(value, dict):
+            return value
+    return {}
+
+
+def _text_setting(value) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _without_server_only(value):
+    if isinstance(value, dict):
+        return {
+            key: _without_server_only(item)
+            for key, item in value.items()
+            if key not in _XHTTP_SERVER_ONLY_KEYS
+        }
+    if isinstance(value, list):
+        return [_without_server_only(item) for item in value]
+    return value
+
+
+def _client_xhttp_extra(tag: str, net_settings: dict):
+    from app.models.proxy import validate_xhttp_extra
+
+    if "extra" in net_settings and net_settings.get("extra") is not None:
+        extra = net_settings.get("extra")
+        if not isinstance(extra, dict):
+            raise ValueError(f"Invalid XHTTP extra in inbound {tag}")
+        projected = deepcopy(extra)
+    else:
+        projected = {}
+        for key, value in net_settings.items():
+            if key in _XHTTP_CONTROL_KEYS or key in _XHTTP_SERVER_ONLY_KEYS or key in _XHTTP_SECRET_KEYS:
+                continue
+            projected[key] = deepcopy(value)
+        if not projected:
+            return None
+    try:
+        validate_xhttp_extra(projected)
+    except ValueError:
+        raise ValueError(f"Invalid XHTTP extra in inbound {tag}") from None
+    return _without_server_only(projected)
+
 
 
 class XRayConfig(dict):
@@ -163,7 +229,8 @@ class XRayConfig(dict):
                 "host": [],
                 "path": "",
                 "header_type": "",
-                "is_fallback": False
+                "is_fallback": False,
+                "vless_encryption_required": _vless_encryption_required(inbound),
             }
 
             # port settings
@@ -180,7 +247,13 @@ class XRayConfig(dict):
             # stream settings
             if stream := inbound.get('streamSettings'):
                 net = stream.get('network', 'tcp')
-                net_settings = stream.get(f"{net}Settings", {})
+                if net in ('tcp', 'raw'):
+                    net_settings = _named_settings(stream, 'rawSettings', 'tcpSettings')
+                elif net in ('xhttp', 'splithttp'):
+                    net_settings = _named_settings(stream, 'xhttpSettings', 'splithttpSettings')
+                else:
+                    candidate = stream.get(f"{net}Settings", {})
+                    net_settings = candidate if isinstance(candidate, dict) else {}
                 security = stream.get("security")
                 tls_settings = stream.get(f"{security}Settings")
 
@@ -191,7 +264,7 @@ class XRayConfig(dict):
                     tls_settings = self._fallbacks_inbound.get(
                         'streamSettings', {}).get(f"{security}Settings", {})
 
-                settings['network'] = net
+                settings['network'] = 'xhttp' if net in ('xhttp', 'splithttp') else net
 
                 if security == 'tls':
                     # settings['fp']
@@ -213,39 +286,55 @@ class XRayConfig(dict):
                             settings['sni'].extend(get_cert_SANs(cert))
 
                 elif security == 'reality':
+                    tls_settings = tls_settings or {}
                     settings['fp'] = 'chrome'
                     settings['tls'] = 'reality'
                     settings['sni'] = tls_settings.get('serverNames', [])
-
-                    try:
-                        settings['pbk'] = tls_settings['publicKey']
-                    except KeyError:
-                        pvk = tls_settings.get('privateKey')
-                        if not pvk:
+                    password = _text_setting(tls_settings.get('password'))
+                    public_key = _text_setting(tls_settings.get('publicKey'))
+                    if password:
+                        settings['pbk'] = password
+                    elif public_key:
+                        settings['pbk'] = public_key
+                    else:
+                        private_key = tls_settings.get('privateKey')
+                        if not private_key:
                             raise ValueError(
                                 f"You need to provide privateKey in realitySettings of {inbound['tag']}")
-
                         try:
                             from app.xray import core
-                            x25519 = core.get_x25519(pvk)
+                            x25519 = core.get_x25519(private_key)
                             settings['pbk'] = x25519['public_key']
                         except ImportError:
                             pass
-
                         if not settings.get('pbk'):
                             raise ValueError(
                                 f"You need to provide publicKey in realitySettings of {inbound['tag']}")
-
+                    seed = _text_setting(tls_settings.get('mldsa65Seed'))
+                    verify = _text_setting(tls_settings.get('mldsa65Verify'))
+                    if seed:
+                        try:
+                            from app.xray import core
+                            settings['mldsa65Verify'] = core.get_mldsa65_verify(seed)
+                        except Exception:
+                            raise ValueError(
+                                f"Unable to derive REALITY verification key for {inbound['tag']}") from None
+                    elif verify:
+                        from app.models.proxy import is_mldsa65_verify
+                        if not is_mldsa65_verify(verify):
+                            raise ValueError(f"Invalid REALITY verification key for {inbound['tag']}")
+                        settings['mldsa65Verify'] = verify
                     try:
                         settings['sids'] = tls_settings.get('shortIds')
                         settings['sids'][0]  # check if there is any shortIds
                     except (IndexError, TypeError):
                         raise ValueError(
                             f"You need to define at least one shortID in realitySettings of {inbound['tag']}")
-                    try:
-                        settings['spx'] = tls_settings.get('SpiderX')
-                    except:
-                        settings['spx'] = ""
+                    spider = tls_settings.get('spiderX')
+                    if spider is None:
+                        spider = tls_settings.get('SpiderX')
+                    settings['spiderX'] = spider or ""
+                    settings['spx'] = settings['spiderX']
 
                 if net in ('tcp', 'raw'):
                     header = net_settings.get('header', {})
@@ -300,17 +389,11 @@ class XRayConfig(dict):
                     settings['host'] = [host]
 
                 elif net in ('splithttp', 'xhttp'):
-                    settings['path'] = net_settings.get('path', '')
-                    host = net_settings.get('host', '')
-                    settings['host'] = [host]
-                    settings['scMaxEachPostBytes'] = net_settings.get('scMaxEachPostBytes', 1000000)
-                    settings['scMaxConcurrentPosts'] = net_settings.get('scMaxConcurrentPosts', 100)
-                    settings['scMinPostsIntervalMs'] = net_settings.get('scMinPostsIntervalMs', 30)
-                    settings['xPaddingBytes'] = net_settings.get('xPaddingBytes', "100-1000")
-                    settings['xmux'] = net_settings.get('xmux', {})
-                    settings["mode"] = net_settings.get("mode", "auto")
-                    settings["noGRPCHeader"] = net_settings.get("noGRPCHeader", False)
-                    settings["keepAlivePeriod"] = net_settings.get("keepAlivePeriod", 0)
+                    settings['path'] = net_settings.get('path') or ""
+                    host = net_settings.get('host') or ""
+                    settings['host'] = [host] if isinstance(host, str) else host
+                    settings['mode'] = net_settings.get('mode') or "auto"
+                    settings['xhttp_extra'] = _client_xhttp_extra(inbound['tag'], net_settings)
 
                 elif net == 'kcp':
                     header = net_settings.get('header', {})
@@ -408,13 +491,16 @@ class XRayConfig(dict):
                         if excluded_inbound_tags and inbound['tag'] in excluded_inbound_tags:
                             continue
 
+                        # Copy before filtering so the next inbound still sees the stored flow.
                         client = {
                             "email": f"{user_id}.{username}",
                             **settings
                         }
 
-                        # XTLS currently only supports transmission methods of TCP and mKCP
-                        if client.get('flow') and (
+                        if proxy_type == ProxyTypes.VLESS.value:
+                            if client.get('flow') and not supports_vless_flow(inbound):
+                                del client['flow']
+                        elif client.get('flow') and (
                                 inbound.get('network', 'tcp') not in ('tcp', 'raw', 'kcp')
                                 or
                                 (

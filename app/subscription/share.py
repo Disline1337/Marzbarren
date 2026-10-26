@@ -1,4 +1,5 @@
 import base64
+import copy
 import random
 import secrets
 from collections import defaultdict
@@ -228,6 +229,76 @@ def setup_format_variables(extra_data: dict) -> dict:
 
     return format_variables
 
+def _project_host(inbound: dict, host: dict, format_variables: dict):
+    """Return one subscription projection. None skips an incompatible host."""
+    encryption = host.get("vless_encryption")
+    required = bool(inbound.get("vless_encryption_required"))
+    if required and encryption in (None, "none"):
+        return None
+    if not required and encryption not in (None, "none"):
+        return None
+
+    projected = inbound.copy()
+    sids = [sid for sid in (inbound.get("sids") or []) if sid]
+    if not sids:
+        sids = [sid for sid in (inbound.get("sids") or []) if sid == ""]
+    if sids:
+        projected["sid"] = random.choice(sids)
+
+    sni = ""
+    sni_list = host["sni"] or inbound["sni"]
+    if sni_list:
+        salt = secrets.token_hex(8)
+        sni = random.choice(sni_list).replace("*", salt)
+
+    req_host = ""
+    req_host_list = host["host"] or inbound["host"]
+    if req_host_list:
+        salt = secrets.token_hex(8)
+        req_host = random.choice(req_host_list).replace("*", salt)
+
+    address = ""
+    if host["address"]:
+        salt = secrets.token_hex(8)
+        address = random.choice(host["address"]).replace("*", salt)
+
+    if host["path"] is not None:
+        path = host["path"].format_map(format_variables)
+    else:
+        path = inbound.get("path", "").format_map(format_variables)
+
+    if host.get("use_sni_as_host", False) and sni:
+        req_host = sni
+
+    projected.update({
+        "address": address,
+        "port": host["port"] or inbound["port"],
+        "sni": sni,
+        "host": req_host,
+        "tls": inbound["tls"] if host["tls"] is None else host["tls"],
+        "alpn": host["alpn"] if host["alpn"] else None,
+        "path": path,
+        "fp": host["fingerprint"] or inbound.get("fp", ""),
+        "ais": host["allowinsecure"] or inbound.get("allowinsecure", ""),
+        "mux_enable": host["mux_enable"],
+        "fragment_setting": host["fragment_setting"],
+        "noise_setting": host["noise_setting"],
+        "random_user_agent": host["random_user_agent"],
+    })
+    if inbound.get("protocol") == "vless":
+        projected["vless_encryption"] = encryption if encryption is not None else "none"
+    if inbound.get("network") in ("xhttp", "splithttp"):
+        if host.get("xhttp_mode") is not None:
+            projected["mode"] = host["xhttp_mode"]
+        override = host.get("xhttp_extra") is not None
+        projected["xhttp_extra_override"] = override
+        if override:
+            projected["xhttp_extra"] = copy.deepcopy(host["xhttp_extra"])
+        elif isinstance(projected.get("xhttp_extra"), dict):
+            projected["xhttp_extra"] = copy.deepcopy(projected["xhttp_extra"])
+    return projected
+
+
 
 def process_inbounds_and_tags(
         inbounds: dict,
@@ -264,59 +335,14 @@ def process_inbounds_and_tags(
                 continue
 
             format_variables.update({"TRANSPORT": inbound["network"]})
-            host_inbound = inbound.copy()
             for host in xray.hosts.get(tag, []):
-                sni = ""
-                sni_list = host["sni"] or inbound["sni"]
-                if sni_list:
-                    salt = secrets.token_hex(8)
-                    sni = random.choice(sni_list).replace("*", salt)
-
-                if sids := inbound.get("sids"):
-                    inbound["sid"] = random.choice(sids)
-
-                req_host = ""
-                req_host_list = host["host"] or inbound["host"]
-                if req_host_list:
-                    salt = secrets.token_hex(8)
-                    req_host = random.choice(req_host_list).replace("*", salt)
-
-                address = ""
-                address_list = host['address']
-                if host['address']:
-                    salt = secrets.token_hex(8)
-                    address = random.choice(address_list).replace('*', salt)
-
-                if host["path"] is not None:
-                    path = host["path"].format_map(format_variables)
-                else:
-                    path = inbound.get("path", "").format_map(format_variables)
-
-                if host.get("use_sni_as_host", False) and sni:
-                    req_host = sni
-
-                host_inbound.update(
-                    {
-                        "port": host["port"] or inbound["port"],
-                        "sni": sni,
-                        "host": req_host,
-                        "tls": inbound["tls"] if host["tls"] is None else host["tls"],
-                        "alpn": host["alpn"] if host["alpn"] else None,
-                        "path": path,
-                        "fp": host["fingerprint"] or inbound.get("fp", ""),
-                        "ais": host["allowinsecure"]
-                        or inbound.get("allowinsecure", ""),
-                        "mux_enable": host["mux_enable"],
-                        "fragment_setting": host["fragment_setting"],
-                        "noise_setting": host["noise_setting"],
-                        "random_user_agent": host["random_user_agent"],
-                    }
-                )
-
+                projected = _project_host(inbound, host, format_variables)
+                if projected is None:
+                    continue
                 conf.add(
                     remark=host["remark"].format_map(format_variables),
-                    address=address.format_map(format_variables),
-                    inbound=host_inbound,
+                    address=projected.pop("address"),
+                    inbound=projected,
                     settings=settings.model_dump()
                 )
 

@@ -7,6 +7,7 @@ from app import logger, xray
 from app.db import GetDB, crud
 from app.models.node import NodeStatus
 from app.models.user import UserResponse
+from app.models.proxy import ProxyTypes, supports_vless_flow
 from app.utils.concurrency import threaded_function
 from app.xray.node import XRayNode
 from xray_api import XRay as XRayAPI
@@ -70,8 +71,10 @@ def add_user(dbuser: "DBUser"):
                 pass
             account = proxy_type.account_model(email=email, **proxy_settings)
 
-            # XTLS currently only supports transmission methods of TCP and mKCP
-            if getattr(account, 'flow', None) and (
+            if proxy_type == ProxyTypes.VLESS:
+                if getattr(account, 'flow', None) and not supports_vless_flow(inbound):
+                    account.flow = XTLSFlows.NONE
+            elif getattr(account, 'flow', None) and (
                 inbound.get('network', 'tcp') not in ('tcp', 'kcp')
                 or
                 (
@@ -116,8 +119,10 @@ def update_user(dbuser: "DBUser"):
                 pass
             account = proxy_type.account_model(email=email, **proxy_settings)
 
-            # XTLS currently only supports transmission methods of TCP and mKCP
-            if getattr(account, 'flow', None) and (
+            if proxy_type == ProxyTypes.VLESS:
+                if getattr(account, 'flow', None) and not supports_vless_flow(inbound):
+                    account.flow = XTLSFlows.NONE
+            elif getattr(account, 'flow', None) and (
                 inbound.get('network', 'tcp') not in ('tcp', 'kcp')
                 or
                 (

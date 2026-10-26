@@ -1,6 +1,6 @@
 services:
   marzban:
-    image: marzbarren:latest
+    image: ghcr.io/disline1337/marzbarren:0.9.0
     restart: always
     env_file: .env
     network_mode: host

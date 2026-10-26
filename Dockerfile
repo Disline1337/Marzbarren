@@ -1,4 +1,12 @@
-ARG PYTHON_VERSION=3.12
+ARG PYTHON_VERSION=3.14
+
+FROM node:22-bookworm-slim AS dashboard
+WORKDIR /dashboard
+COPY app/dashboard/package*.json app/dashboard/chakra.config.ts ./
+RUN npm ci
+COPY app/dashboard/ ./
+RUN VITE_BASE_API=/api/ npm run build -- --outDir build --assetsDir statics \
+    && cp build/index.html build/404.html
 
 FROM python:$PYTHON_VERSION-slim AS build
 
@@ -12,7 +20,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY ./requirements.txt /code/
-RUN python3 -m pip install --upgrade pip "setuptools<81" \
+RUN python3 -m pip install --upgrade pip \
     && pip install --no-cache-dir --upgrade -r /code/requirements.txt
 
 FROM python:$PYTHON_VERSION-slim
@@ -27,6 +35,7 @@ COPY --from=build /usr/local/bin /usr/local/bin
 COPY --from=build /usr/local/share/xray /usr/local/share/xray
 
 COPY . /code
+COPY --from=dashboard /dashboard/build /code/app/dashboard/build
 
 RUN ln -s /code/marzban-cli.py /usr/bin/marzban-cli \
     && chmod +x /usr/bin/marzban-cli \

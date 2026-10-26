@@ -11,6 +11,7 @@ import {
   Checkbox,
   Container,
   FormControl,
+  FormHelperText,
   FormErrorMessage,
   FormLabel,
   HStack,
@@ -32,6 +33,7 @@ import {
   Portal,
   Switch,
   Text,
+  Textarea,
   Tooltip,
   VStack,
   chakra,
@@ -153,6 +155,9 @@ const hostsSchema = z.record(
       alpn: z.string(),
       fingerprint: z.string(),
       use_sni_as_host: z.boolean().default(false),
+      vless_encryption: z.string().nullable().default(""),
+      xhttp_mode: z.string().nullable().default(""),
+      xhttp_extra: z.string().nullable().default(""),
     })
   )
 );
@@ -214,6 +219,9 @@ const AccordionInbound: FC<AccordionInboundType> = ({
       alpn: "",
       fingerprint: "",
       use_sni_as_host: false,
+      vless_encryption: "",
+      xhttp_mode: "",
+      xhttp_extra: "",
     });
   };
   const duplicateHost = (index: number) => {
@@ -1174,6 +1182,42 @@ const AccordionInbound: FC<AccordionInboundType> = ({
                                 </Error>
                               )}
                           </FormControl>
+                          {inbound?.protocol === "vless" && (
+                            <FormControl isInvalid={!!accordionErrors?.[index]?.vless_encryption}>
+                              <FormLabel>{t("hostsDialog.vlessEncryption")}</FormLabel>
+                              <Input {...form.register(hostKey + "." + index + ".vless_encryption")} />
+                              <FormHelperText>{t("hostsDialog.vlessEncryptionInfo")}</FormHelperText>
+                              {inbound.vless_encryption_required && (
+                                <FormHelperText>{t("hostsDialog.vlessEncryptionRequired")}</FormHelperText>
+                              )}
+                              {accordionErrors?.[index]?.vless_encryption && (
+                                <Error>{accordionErrors[index]?.vless_encryption?.message}</Error>
+                              )}
+                            </FormControl>
+                          )}
+                          {(inbound?.network === "xhttp" || inbound?.network === "splithttp") && (
+                            <>
+                              <FormControl>
+                                <FormLabel>{t("hostsDialog.xhttpMode")}</FormLabel>
+                                <ChakraSelect {...form.register(hostKey + "." + index + ".xhttp_mode")}>
+                                  <option value="">{t("hostsDialog.xhttpInherit")}</option>
+                                  <option value="auto">auto</option>
+                                  <option value="packet-up">packet-up</option>
+                                  <option value="stream-up">stream-up</option>
+                                  <option value="stream-one">stream-one</option>
+                                </ChakraSelect>
+                              </FormControl>
+                              <FormControl isInvalid={!!accordionErrors?.[index]?.xhttp_extra}>
+                                <FormLabel>{t("hostsDialog.xhttpExtra")}</FormLabel>
+                                <Textarea rows={5} {...form.register(hostKey + "." + index + ".xhttp_extra")} />
+                                <FormHelperText>{t("hostsDialog.xhttpExtraInfo")}</FormHelperText>
+                                {accordionErrors?.[index]?.xhttp_extra && (
+                                  <Error>{accordionErrors[index]?.xhttp_extra?.message}</Error>
+                                )}
+                              </FormControl>
+                            </>
+                          )}
+                          <Text fontSize="xs" color="gray.500">{t("hostsDialog.modernXrayCompatibility")}</Text>
                         </VStack>
                       </AccordionPanel>
                     </AccordionItem>
@@ -1215,16 +1259,78 @@ export const HostsDialog: FC = () => {
 
   useEffect(() => {
     if (hosts && isEditingHosts) {
-      form.reset(hosts);
+      const converted = Object.fromEntries(
+        Object.entries(hosts).map(([tag, list]) => [
+          tag,
+          list.map((host) => ({
+            ...host,
+            vless_encryption: host.vless_encryption ?? "",
+            xhttp_mode: host.xhttp_mode ?? "",
+            xhttp_extra:
+              host.xhttp_extra == null ? "" : JSON.stringify(host.xhttp_extra, null, 2),
+          })),
+        ])
+      );
+      form.reset(converted as z.infer<typeof hostsSchema>);
     }
   }, [hosts]);
-
   const onClose = () => {
     setOpenAccordions({});
     onEditingHosts(false);
   };
-  const handleFormSubmit = (hosts: z.infer<typeof hostsSchema>) => {
-    setHosts(hosts)
+  const handleFormSubmit = (values: z.infer<typeof hostsSchema>) => {
+    let invalid = false;
+    const payload = Object.fromEntries(
+      Object.entries(values).map(([tag, list]) => {
+        const inbound = [...inbounds.values()].flat().find((item) => item.tag === tag);
+        return [
+          tag,
+          list.map((host, index) => {
+            const encryption = host.vless_encryption?.trim() ? host.vless_encryption.trim() : null;
+            const mode = host.xhttp_mode?.trim() ? host.xhttp_mode : null;
+            let extra: Record<string, unknown> | null = null;
+            const raw = host.xhttp_extra?.trim() ?? "";
+            if (raw) {
+              try {
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+                  invalid = true;
+                  form.setError(`${tag}.${index}.xhttp_extra`, {
+                    message: t("hostsDialog.xhttpExtraInvalid"),
+                  });
+                } else {
+                  extra = parsed;
+                }
+              } catch {
+                invalid = true;
+                form.setError(`${tag}.${index}.xhttp_extra`, {
+                  message: t("hostsDialog.xhttpExtraInvalid"),
+                });
+              }
+            }
+            if (
+              inbound?.protocol === "vless" &&
+              inbound.vless_encryption_required &&
+              !host.is_disabled &&
+              (!encryption || encryption === "none")
+            ) {
+              invalid = true;
+              form.setError(`${tag}.${index}.vless_encryption`, {
+                message: t("hostsDialog.vlessEncryptionRequired"),
+              });
+            }
+            return {
+              ...host,
+              vless_encryption: encryption,
+              xhttp_mode: mode,
+              xhttp_extra: extra,
+            };
+          }),
+        ];
+      })
+    );
+    if (invalid) return;
+    setHosts(payload)
       .then(() => {
         toast({
           title: t("hostsDialog.savedSuccess"),

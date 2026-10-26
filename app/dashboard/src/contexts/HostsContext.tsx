@@ -10,6 +10,9 @@ type HostsSchema = Record<
     path: string | null;
     sni: string | null;
     host: string | null;
+    vless_encryption?: string | null;
+    xhttp_mode?: string | null;
+    xhttp_extra?: Record<string, unknown> | null;
   }[]
 >;
 

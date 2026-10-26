@@ -2,6 +2,7 @@
 Functions for managing proxy hosts, users, user templates, nodes, and administrative tasks.
 """
 
+import time
 from datetime import datetime, timedelta
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
@@ -15,6 +16,8 @@ from app.db.models import (
     TLS,
     Admin,
     AdminUsageLogs,
+    ClientRoutingSettings,
+    HwidUserDevice,
     NextPlan,
     Node,
     NodeUsage,
@@ -29,9 +32,16 @@ from app.db.models import (
     UserTemplate,
     UserUsageResetLogs,
 )
+from app.utils.hwid import HwidCheckResult, HwidHeaders
 from app.models.admin import AdminCreate, AdminModify, AdminPartialModify
 from app.models.node import NodeCreate, NodeModify, NodeStatus, NodeUsageResponse
 from app.models.proxy import ProxyHost as ProxyHostModify
+from app.models.client_routing import (
+    ClientRoutingResponse,
+    ClientRoutingUpdate,
+    HappRoutingProfile,
+    MihomoRoutingProfile,
+)
 from app.models.user import (
     ReminderType,
     UserCreate,
@@ -43,7 +53,12 @@ from app.models.user import (
 )
 from app.models.user_template import UserTemplateCreate, UserTemplateModify
 from app.utils.helpers import calculate_expiration_days, calculate_usage_percent
-from config import NOTIFY_DAYS_LEFT, NOTIFY_REACHED_USAGE_PERCENT, USERS_AUTODELETE_DAYS
+from config import (
+    HWID_FALLBACK_DEVICE_LIMIT,
+    NOTIFY_DAYS_LEFT,
+    NOTIFY_REACHED_USAGE_PERCENT,
+    USERS_AUTODELETE_DAYS,
+)
 
 
 def add_default_host(db: Session, inbound: ProxyInbound):
@@ -119,7 +134,10 @@ def add_host(db: Session, inbound_tag: str, host: ProxyHostModify) -> List[Proxy
             inbound=inbound,
             security=host.security,
             alpn=host.alpn,
-            fingerprint=host.fingerprint
+            fingerprint=host.fingerprint,
+            vless_encryption=host.vless_encryption,
+            xhttp_mode=host.xhttp_mode,
+            xhttp_extra=host.xhttp_extra,
         )
     )
     db.commit()
@@ -159,6 +177,9 @@ def update_hosts(db: Session, inbound_tag: str, modified_hosts: List[ProxyHostMo
             noise_setting=host.noise_setting,
             random_user_agent=host.random_user_agent,
             use_sni_as_host=host.use_sni_as_host,
+            vless_encryption=host.vless_encryption,
+            xhttp_mode=host.xhttp_mode,
+            xhttp_extra=host.xhttp_extra,
         ) for host in modified_hosts
     ]
     db.commit()
@@ -390,6 +411,7 @@ def create_user(db: Session, user: UserCreate, admin: Admin = None) -> User:
         on_hold_expire_duration=(user.on_hold_expire_duration or None),
         on_hold_timeout=(user.on_hold_timeout or None),
         auto_delete_in_days=user.auto_delete_in_days,
+        hwid_device_limit=user.hwid_device_limit,
         next_plan=NextPlan(
             data_limit=user.next_plan.data_limit,
             expire=user.next_plan.expire,
@@ -524,6 +546,10 @@ def update_user(db: Session, dbuser: User, modify: UserModify) -> User:
         )
     elif dbuser.next_plan is not None:
         db.delete(dbuser.next_plan)
+
+    # Use model_fields_set so explicit null clears the per-user override
+    if "hwid_device_limit" in getattr(modify, "model_fields_set", set()):
+        dbuser.hwid_device_limit = modify.hwid_device_limit
 
     dbuser.edit_at = datetime.utcnow()
 
@@ -1498,3 +1524,326 @@ def count_online_users(db: Session, hours: int = 24):
     query = db.query(func.count(User.id)).filter(User.online_at.isnot(
         None), User.online_at >= twenty_four_hours_ago)
     return query.scalar()
+
+
+# ── HWID device limit ─────────────────────────────────────────────────────────
+
+
+def count_user_hwid_devices(db: Session, user_id: int) -> int:
+    return (
+        db.query(func.count(HwidUserDevice.id))
+        .filter(HwidUserDevice.user_id == user_id)
+        .scalar()
+        or 0
+    )
+
+
+def list_user_hwid_devices(db: Session, user_id: int) -> List[HwidUserDevice]:
+    return (
+        db.query(HwidUserDevice)
+        .filter(HwidUserDevice.user_id == user_id)
+        .order_by(HwidUserDevice.created_at.desc())
+        .all()
+    )
+
+
+def get_user_hwid_device(
+    db: Session, user_id: int, hwid: str
+) -> Optional[HwidUserDevice]:
+    return (
+        db.query(HwidUserDevice)
+        .filter(HwidUserDevice.user_id == user_id, HwidUserDevice.hwid == hwid)
+        .first()
+    )
+
+
+def delete_user_hwid_device(db: Session, user_id: int, hwid: str) -> bool:
+    device = get_user_hwid_device(db, user_id, hwid)
+    if not device:
+        return False
+    db.delete(device)
+    db.commit()
+    return True
+
+
+def delete_all_user_hwid_devices(db: Session, user_id: int) -> int:
+    count = (
+        db.query(HwidUserDevice)
+        .filter(HwidUserDevice.user_id == user_id)
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return count
+
+
+def _upsert_hwid_device(
+    db: Session,
+    user_id: int,
+    hwid_headers: HwidHeaders,
+    request_ip: Optional[str] = None,
+) -> HwidUserDevice:
+    """Insert or refresh metadata for an existing (user, hwid) pair."""
+    device = (
+        db.query(HwidUserDevice)
+        .filter(HwidUserDevice.user_id == user_id, HwidUserDevice.hwid == hwid_headers.hwid)
+        .with_for_update()
+        .first()
+    )
+    now = datetime.utcnow()
+    if device:
+        device.platform = hwid_headers.platform or device.platform
+        device.os_version = hwid_headers.os_version or device.os_version
+        device.device_model = hwid_headers.device_model or device.device_model
+        device.user_agent = hwid_headers.user_agent or device.user_agent
+        if request_ip:
+            device.request_ip = request_ip
+        device.updated_at = now
+    else:
+        device = HwidUserDevice(
+            hwid=hwid_headers.hwid,
+            user_id=user_id,
+            platform=hwid_headers.platform,
+            os_version=hwid_headers.os_version,
+            device_model=hwid_headers.device_model,
+            user_agent=hwid_headers.user_agent,
+            request_ip=request_ip,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(device)
+    db.flush()
+    db.refresh(device)
+    return device
+
+
+def create_hwid_device_admin(
+    db: Session,
+    user_id: int,
+    hwid: str,
+    platform: Optional[str] = None,
+    os_version: Optional[str] = None,
+    device_model: Optional[str] = None,
+    user_agent: Optional[str] = None,
+) -> HwidUserDevice:
+    existing = get_user_hwid_device(db, user_id, hwid)
+    if existing:
+        return existing
+    now = datetime.utcnow()
+    device = HwidUserDevice(
+        hwid=hwid,
+        user_id=user_id,
+        platform=platform,
+        os_version=os_version,
+        device_model=device_model,
+        user_agent=user_agent,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(device)
+    db.commit()
+    db.refresh(device)
+    return device
+
+
+def check_and_register_hwid(
+    db: Session,
+    dbuser: User,
+    hwid_headers: Optional[HwidHeaders],
+    request_ip: Optional[str] = None,
+) -> HwidCheckResult:
+    """Serialize the limit check and registration in one database transaction.
+
+    A no-op UPDATE locks the user row on MySQL and takes the SQLite writer
+    lock (where SELECT FOR UPDATE is ignored). Keep the lock until the device
+    is committed so different new HWIDs cannot all consume the last slot.
+    """
+    try:
+        db.query(User).filter(User.id == dbuser.id).update(
+            {User.hwid_device_limit: User.hwid_device_limit}, synchronize_session=False
+        )
+        db.refresh(dbuser, ["hwid_device_limit"])
+        result = _check_and_register_hwid_locked(db, dbuser, hwid_headers, request_ip)
+        db.commit()
+        return result
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _check_and_register_hwid_locked(
+    db: Session,
+    dbuser: User,
+    hwid_headers: Optional[HwidHeaders],
+    request_ip: Optional[str] = None,
+) -> HwidCheckResult:
+    """
+    Enforce HWID device limit for a subscription request.
+
+    Semantics (Remnawave-compatible):
+      - hwid_device_limit == 0  → bypass (unlimited), still upsert if header present
+      - hwid_device_limit is None → use HWID_FALLBACK_DEVICE_LIMIT
+      - missing/invalid hwid    → not allowed (hwid_not_supported)
+      - known device            → allow + refresh
+      - new device under limit  → create + allow
+      - over limit              → deny (max_device_reached)
+
+    Called with the user registration lock held by check_and_register_hwid.
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    # Per-user bypass
+    if dbuser.hwid_device_limit == 0:
+        if hwid_headers is not None:
+            try:
+                _upsert_hwid_device(db, dbuser.id, hwid_headers, request_ip)
+            except Exception:
+                db.rollback()
+        return HwidCheckResult(
+            subscription_allowed=True,
+            max_device_reached=False,
+            hwid_not_supported=False,
+            limit_bypassed=True,
+        )
+
+    if hwid_headers is None:
+        return HwidCheckResult(
+            subscription_allowed=False,
+            max_device_reached=False,
+            hwid_not_supported=True,
+            limit_bypassed=False,
+        )
+
+    # Locking reads see committed registrations even under MySQL repeatable read.
+    devices = (
+        db.query(HwidUserDevice)
+        .filter(HwidUserDevice.user_id == dbuser.id)
+        .with_for_update()
+        .all()
+    )
+    existing = next((device for device in devices if device.hwid == hwid_headers.hwid), None)
+    if existing:
+        try:
+            _upsert_hwid_device(db, dbuser.id, hwid_headers, request_ip)
+        except Exception:
+            db.rollback()
+        return HwidCheckResult(
+            subscription_allowed=True,
+            max_device_reached=False,
+            hwid_not_supported=False,
+            limit_bypassed=False,
+        )
+
+    device_limit = (
+        dbuser.hwid_device_limit
+        if dbuser.hwid_device_limit is not None
+        else HWID_FALLBACK_DEVICE_LIMIT
+    )
+
+    current_count = len(devices)
+    if current_count >= device_limit:
+        return HwidCheckResult(
+            subscription_allowed=False,
+            max_device_reached=True,
+            hwid_not_supported=False,
+            limit_bypassed=False,
+        )
+
+    try:
+        _upsert_hwid_device(db, dbuser.id, hwid_headers, request_ip)
+    except IntegrityError:
+        # Another concurrent request registered the same hwid or raced to fill slots
+        db.rollback()
+        if get_user_hwid_device(db, dbuser.id, hwid_headers.hwid):
+            return HwidCheckResult(
+                subscription_allowed=True,
+                max_device_reached=False,
+                hwid_not_supported=False,
+                limit_bypassed=False,
+            )
+        if count_user_hwid_devices(db, dbuser.id) >= device_limit:
+            return HwidCheckResult(
+                subscription_allowed=False,
+                max_device_reached=True,
+                hwid_not_supported=False,
+                limit_bypassed=False,
+            )
+        return HwidCheckResult(
+            subscription_allowed=False,
+            max_device_reached=True,
+            hwid_not_supported=False,
+            limit_bypassed=False,
+        )
+
+    return HwidCheckResult(
+        subscription_allowed=True,
+        max_device_reached=False,
+        hwid_not_supported=False,
+        limit_bypassed=False,
+    )
+
+
+_CLIENT_ROUTING_ID = 1
+
+
+def _routing_response(settings: dict, happ_updated_at: int) -> ClientRoutingResponse:
+    stored = ClientRoutingUpdate.model_validate(settings)
+    return ClientRoutingResponse(
+        happ=stored.happ,
+        mihomo=stored.mihomo,
+        happ_updated_at=int(happ_updated_at),
+    )
+
+
+def get_client_routing_settings(db: Session) -> ClientRoutingResponse:
+    """Return saved routing profiles, or schema defaults without writing a row."""
+    row = db.query(ClientRoutingSettings).filter(ClientRoutingSettings.id == _CLIENT_ROUTING_ID).one_or_none()
+    if row is None:
+        return ClientRoutingResponse(happ=HappRoutingProfile(), mihomo=MihomoRoutingProfile())
+    return _routing_response(row.settings, row.happ_updated_at)
+
+
+def update_client_routing_settings(db: Session, settings: ClientRoutingUpdate) -> ClientRoutingResponse:
+    """Replace both profiles. A no-op update serializes writers, including on SQLite."""
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.orm.attributes import flag_modified
+
+    db.query(ClientRoutingSettings).filter(ClientRoutingSettings.id == _CLIENT_ROUTING_ID).update(
+        {ClientRoutingSettings.id: _CLIENT_ROUTING_ID},
+        synchronize_session=False,
+    )
+    row = (
+        db.query(ClientRoutingSettings)
+        .populate_existing()
+        .filter(ClientRoutingSettings.id == _CLIENT_ROUTING_ID)
+        .one_or_none()
+    )
+    if row is None:
+        old_happ = HappRoutingProfile()
+        old_stamp = 0
+    else:
+        old_happ = ClientRoutingUpdate.model_validate(row.settings).happ
+        old_stamp = int(row.happ_updated_at)
+
+    happ_changed = settings.happ.model_dump(mode="json") != old_happ.model_dump(mode="json")
+    if happ_changed and (settings.happ.enabled or old_stamp > 0):
+        new_stamp = max(int(time.time()), old_stamp + 1)
+    else:
+        new_stamp = old_stamp
+
+    payload = settings.model_dump(mode="json")
+    if row is None:
+        row = ClientRoutingSettings(id=_CLIENT_ROUTING_ID, settings=payload, happ_updated_at=new_stamp)
+        db.add(row)
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise
+    else:
+        row.settings = payload
+        row.happ_updated_at = new_stamp
+        flag_modified(row, "settings")
+        db.commit()
+
+    db.refresh(row)
+    return _routing_response(row.settings, row.happ_updated_at)

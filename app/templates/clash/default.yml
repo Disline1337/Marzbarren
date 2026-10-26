@@ -8,6 +8,10 @@ proxy-groups:
   type: 'url-test'
   url: 'http://www.gstatic.com/generate_204'
   interval: 300
+  {% if proxy_remarks %}
   proxies:
   {{ proxy_remarks | yaml | indent(2) }}
+  {% else %}
+  proxies: [REJECT]
+  {% endif %}
 {{ conf.get("proxy-groups", []) | yaml }}

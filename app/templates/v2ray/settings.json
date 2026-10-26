@@ -67,7 +67,7 @@
       "Pragma": "no-cache"
     }
   },
-  "splithttpSettings": {
+  "xhttpSettings": {
     "headers": {
       "Pragma": "no-cache"
     }

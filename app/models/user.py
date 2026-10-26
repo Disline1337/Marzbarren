@@ -75,6 +75,14 @@ class User(BaseModel):
 
     auto_delete_in_days: Optional[int] = Field(None, nullable=True)
 
+    # NULL = global fallback; 0 = unlimited for this user; N>0 = max devices
+    hwid_device_limit: Optional[int] = Field(
+        None,
+        ge=0,
+        nullable=True,
+        description="Max HWID devices. null=global fallback, 0=unlimited, N=cap",
+    )
+
     next_plan: Optional[NextPlanModel] = Field(None, nullable=True)
 
     @field_validator('data_limit', mode='before')
@@ -289,6 +297,7 @@ class UserResponse(User):
     subscription_url: str = ""
     proxies: dict
     excluded_inbounds: Dict[ProxyTypes, List[str]] = {}
+    hwid_device_count: int = 0
 
     admin: Optional[Admin] = None
     model_config = ConfigDict(from_attributes=True)

@@ -7,6 +7,7 @@ import yaml
 from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun
+from app.models.proxy import legacy_client_cannot_represent, supports_vless_flow
 from app.templates import render_template
 from app.utils.helpers import yml_uuid_representer
 from config import (
@@ -15,6 +16,146 @@ from config import (
     MUX_TEMPLATE,
     USER_AGENT_TEMPLATE,
 )
+
+
+_XHTTP_DIRECT = {
+    "headers": "headers",
+    "noGRPCHeader": "no-grpc-header",
+    "xPaddingBytes": "x-padding-bytes",
+    "xPaddingObfsMode": "x-padding-obfs-mode",
+    "xPaddingKey": "x-padding-key",
+    "xPaddingHeader": "x-padding-header",
+    "xPaddingPlacement": "x-padding-placement",
+    "xPaddingMethod": "x-padding-method",
+    "uplinkHTTPMethod": "uplink-http-method",
+    "uplinkDataPlacement": "uplink-data-placement",
+    "uplinkDataKey": "uplink-data-key",
+    "uplinkChunkSize": "uplink-chunk-size",
+    "sessionPlacement": "session-placement",
+    "sessionKey": "session-key",
+    "seqPlacement": "seq-placement",
+    "seqKey": "seq-key",
+    "scMaxEachPostBytes": "sc-max-each-post-bytes",
+    "scMinPostsIntervalMs": "sc-min-posts-interval-ms",
+}
+_XMUX_MAP = {
+    "maxConcurrency": "max-concurrency",
+    "maxConnections": "max-connections",
+    "cMaxReuseTimes": "c-max-reuse-times",
+    "hMaxRequestTimes": "h-max-request-times",
+    "hMaxReusableSecs": "h-max-reusable-secs",
+    "hKeepAlivePeriod": "h-keep-alive-period",
+}
+_RANGE_FIELDS = {
+    "xPaddingBytes", "uplinkChunkSize", "scMaxEachPostBytes", "scMinPostsIntervalMs",
+    "maxConcurrency", "maxConnections", "cMaxReuseTimes", "hMaxRequestTimes", "hMaxReusableSecs",
+}
+
+
+def _mihomo_scalar(key, value):
+    if key in _RANGE_FIELDS:
+        if isinstance(value, bool) or not isinstance(value, (int, str)):
+            return None
+        return str(value) if isinstance(value, int) else value
+    return value
+
+def _mihomo_download(value):
+    if not isinstance(value, dict):
+        return None
+    allowed = {"address", "port", "security", "network", "tlsSettings", "realitySettings", "xhttpSettings", "splithttpSettings"}
+    if set(value) - allowed:
+        return None
+    if value.get("network", "xhttp") not in ("xhttp", "splithttp", "", None):
+        return None
+    security = value.get("security", "none")
+    if security not in ("none", "tls", "reality"):
+        return None
+    out = {"tls": security != "none"}
+    if "address" in value:
+        out["server"] = value["address"]
+    if "port" in value:
+        out["port"] = value["port"]
+    tls = value.get("tlsSettings") or {}
+    if tls and set(tls) - {"serverName", "alpn", "allowInsecure", "fingerprint"}:
+        return None
+    if tls.get("serverName"):
+        out["servername"] = tls["serverName"]
+    if tls.get("alpn"):
+        out["alpn"] = tls["alpn"]
+    if "allowInsecure" in tls:
+        out["skip-cert-verify"] = tls["allowInsecure"]
+    if tls.get("fingerprint"):
+        out["client-fingerprint"] = tls["fingerprint"]
+    reality = value.get("realitySettings") or {}
+    if reality and set(reality) - {"password", "publicKey", "shortId", "serverName", "fingerprint"}:
+        return None
+    reality_opts = {}
+    public = reality.get("password") or reality.get("publicKey")
+    if public:
+        reality_opts["public-key"] = public
+    if "shortId" in reality:
+        reality_opts["short-id"] = reality["shortId"]
+    if reality_opts:
+        out["reality-opts"] = reality_opts
+    if reality.get("serverName"):
+        out["servername"] = reality["serverName"]
+    if reality.get("fingerprint"):
+        out["client-fingerprint"] = reality["fingerprint"]
+    nested = value.get("xhttpSettings") or value.get("splithttpSettings") or {}
+    if nested:
+        if set(nested) - {"path", "host", "headers", "xmux", "mode"}:
+            return None
+        nested_extra = {key: item for key, item in nested.items() if key not in ("path", "host", "mode")}
+        nested_opts = mihomo_xhttp_opts(
+            nested_extra, nested.get("path") or "", nested.get("host") or "", nested.get("mode") or ""
+        )
+        if nested_opts is None:
+            return None
+        out.update({key: item for key, item in nested_opts.items() if key not in out or key in ("path", "host", "mode", "headers", "reuse-settings")})
+    return out
+
+
+
+def mihomo_xhttp_opts(extra, path, host, mode):
+    opts = {}
+    if path:
+        opts["path"] = path
+    if host:
+        opts["host"] = host
+    if mode:
+        opts["mode"] = mode
+    extra = extra or {}
+    for key, value in extra.items():
+        if key == "xmux":
+            if not isinstance(value, dict):
+                return None
+            reuse = {}
+            for source, target in _XMUX_MAP.items():
+                if source not in value:
+                    continue
+                mapped = _mihomo_scalar(source, value[source])
+                if mapped is None:
+                    return None
+                reuse[target] = mapped
+            if set(value) - set(_XMUX_MAP):
+                return None
+            if reuse:
+                opts["reuse-settings"] = reuse
+        elif key == "downloadSettings":
+            mapped = _mihomo_download(value)
+            if mapped is None:
+                return None
+            opts["download-settings"] = mapped
+        elif key in _XHTTP_DIRECT:
+            mapped = _mihomo_scalar(key, value)
+            if mapped is None:
+                return None
+            opts[_XHTTP_DIRECT[key]] = mapped
+        else:
+            return None
+    return opts
+
+
 
 
 class ClashConfiguration(object):
@@ -182,6 +323,8 @@ class ClashConfiguration(object):
             is_httpupgrade = True
         else:
             is_httpupgrade = False
+        if network == 'raw':
+            network = 'tcp'
         node = {
             'name': remark,
             'type': type,
@@ -254,6 +397,8 @@ class ClashConfiguration(object):
         return node
 
     def add(self, remark: str, address: str, inbound: dict, settings: dict):
+        if legacy_client_cannot_represent(inbound):
+            return
         # not supported by clash
         if inbound['network'] in ("kcp", "splithttp", "xhttp"):
             return
@@ -345,9 +490,21 @@ class ClashMetaConfiguration(ClashConfiguration):
         return node
 
     def add(self, remark: str, address: str, inbound: dict, settings: dict):
-        # not supported by clash-meta
-        if inbound['network'] in ("kcp", "splithttp", "xhttp") or (inbound['network'] == "quic" and inbound["header_type"] != "none"):
+        network = "xhttp" if inbound["network"] == "splithttp" else inbound["network"]
+        if inbound.get("mldsa65Verify") or network == "kcp" or (network == "quic" and inbound["header_type"] != "none"):
             return
+        if network == "xhttp" and inbound.get("protocol") != "vless":
+            return
+        xhttp_opts = None
+        if network == "xhttp":
+            host = inbound.get("host") or ""
+            if isinstance(host, list):
+                host = host[0] if host else ""
+            xhttp_opts = mihomo_xhttp_opts(
+                inbound.get("xhttp_extra"), inbound.get("path") or "", host, inbound.get("mode") or "auto"
+            )
+            if xhttp_opts is None:
+                return
 
         proxy_remark = self._remark_validation(remark)
 
@@ -357,7 +514,7 @@ class ClashMetaConfiguration(ClashConfiguration):
             type=inbound['protocol'],
             server=address,
             port=inbound['port'],
-            network=inbound['network'],
+            network=network,
             tls=(inbound['tls'] in ('tls', 'reality')),
             sni=inbound['sni'],
             host=inbound['host'],
@@ -381,8 +538,14 @@ class ClashMetaConfiguration(ClashConfiguration):
         elif inbound['protocol'] == 'vless':
             node['uuid'] = settings['id']
 
-            if inbound['network'] in ('tcp', 'raw', 'kcp') and inbound['header_type'] != 'http' and inbound['tls'] != 'none':
+            if supports_vless_flow(inbound) and settings.get('flow'):
                 node['flow'] = settings.get('flow', '')
+            encryption = inbound.get("vless_encryption")
+            if isinstance(encryption, str) and encryption not in ("", "none"):
+                node["encryption"] = encryption
+            if xhttp_opts is not None:
+                node["network"] = "xhttp"
+                node["xhttp-opts"] = xhttp_opts
 
         elif inbound['protocol'] == 'trojan':
             node['password'] = settings['password']

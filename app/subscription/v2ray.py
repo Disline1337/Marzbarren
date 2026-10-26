@@ -3,13 +3,14 @@ import copy
 import json
 import urllib.parse as urlparse
 from random import choice
-from typing import Union
+from typing import Optional, Union
 from urllib.parse import quote
 from uuid import UUID
 
 from jinja2.exceptions import TemplateNotFound
 
 from app.subscription.funcs import get_grpc_gun, get_grpc_multi
+from app.models.proxy import supports_vless_flow, validate_xhttp_extra
 from app.templates import render_template
 from app.utils.helpers import UUIDEncoder
 from config import (
@@ -37,7 +38,13 @@ class V2rayShareLink(str):
         return self.links
 
     def add(self, remark: str, address: str, inbound: dict, settings: dict):
+        if inbound.get("mldsa65Verify") and inbound.get("protocol") != "vless":
+            return
         net = inbound["network"]
+        if net == "raw":
+            net = "tcp"
+        elif net == "splithttp":
+            net = "xhttp"
         multi_mode = inbound.get("multiMode", False)
         old_path: str = inbound["path"]
 
@@ -48,9 +55,10 @@ class V2rayShareLink(str):
                 path = get_grpc_gun(old_path)
             if old_path.startswith("/"):
                 path = quote(path, safe="-_.!~*'()")
-
         else:
             path = old_path
+        xhttp_extra = inbound.get("xhttp_extra")
+        mode = inbound.get("mode", "auto")
 
         if inbound["protocol"] == "vmess":
             link = self.vmess(
@@ -81,6 +89,7 @@ class V2rayShareLink(str):
                 heartbeatPeriod=inbound.get("heartbeatPeriod", 0),
                 keepAlivePeriod=inbound.get("keepAlivePeriod", 0),
                 xmux=inbound.get("xmux", {}),
+                xhttp_extra=xhttp_extra,
             )
 
         elif inbound["protocol"] == "vless":
@@ -89,7 +98,7 @@ class V2rayShareLink(str):
                 address=address,
                 port=inbound["port"],
                 id=settings["id"],
-                flow=settings.get("flow", ""),
+                flow=settings.get("flow", "") if supports_vless_flow(inbound) else "",
                 net=net,
                 tls=inbound["tls"],
                 sni=inbound.get("sni", ""),
@@ -113,6 +122,9 @@ class V2rayShareLink(str):
                 heartbeatPeriod=inbound.get("heartbeatPeriod", 0),
                 keepAlivePeriod=inbound.get("keepAlivePeriod", 0),
                 xmux=inbound.get("xmux", {}),
+                encryption=inbound.get("vless_encryption") or "none",
+                pqv=inbound.get("mldsa65Verify") or "",
+                xhttp_extra=xhttp_extra,
             )
 
         elif inbound["protocol"] == "trojan":
@@ -145,6 +157,7 @@ class V2rayShareLink(str):
                 heartbeatPeriod=inbound.get("heartbeatPeriod", 0),
                 keepAlivePeriod=inbound.get("keepAlivePeriod", 0),
                 xmux=inbound.get("xmux", {}),
+                xhttp_extra=xhttp_extra,
             )
 
         elif inbound["protocol"] == "shadowsocks":
@@ -190,6 +203,7 @@ class V2rayShareLink(str):
             heartbeatPeriod: int = 0,
             keepAlivePeriod: int = 0,
             xmux: dict = {},
+            xhttp_extra: Optional[dict] = None,
     ):
         payload = {
             "add": address,
@@ -234,19 +248,12 @@ class V2rayShareLink(str):
                 payload["mode"] = "gun"
 
         elif net in ("splithttp", "xhttp"):
-            extra = {
-                "scMaxEachPostBytes": sc_max_each_post_bytes,
-                "scMaxConcurrentPosts": sc_max_concurrent_posts,
-                "scMinPostsIntervalMs": sc_min_posts_interval_ms,
-                "xPaddingBytes": x_padding_bytes,
-                "noGRPCHeader": noGRPCHeader,
-            }
-            if xmux:
-                extra["xmux"] = xmux
-            payload["type"] = mode
-            if keepAlivePeriod > 0:
-                extra["keepAlivePeriod"] = keepAlivePeriod
-            payload["extra"] = extra
+            payload["net"] = "xhttp"
+            payload["path"] = path
+            payload["host"] = host
+            payload["type"] = mode or "auto"
+            if xhttp_extra is not None:
+                payload["extra"] = xhttp_extra
 
         elif net == "ws":
             if heartbeatPeriod:
@@ -289,15 +296,21 @@ class V2rayShareLink(str):
               heartbeatPeriod: int = 0,
               keepAlivePeriod: int = 0,
               xmux: dict = {},
+              encryption: str = "none",
+              pqv: str = "",
+              xhttp_extra: Optional[dict] = None,
               ):
 
         payload = {
             "security": tls,
-            "type": net,
+            "type": "tcp" if net == "raw" else net,
             "headerType": type
         }
-        if flow and (tls in ('tls', 'reality') and net in ('tcp', 'raw', 'kcp') and type != 'http'):
+        if flow:
             payload['flow'] = flow
+        payload["encryption"] = encryption or "none"
+        if pqv:
+            payload["pqv"] = pqv
 
         if net == 'grpc':
             payload['serviceName'] = path
@@ -312,21 +325,14 @@ class V2rayShareLink(str):
             payload["quicSecurity"] = host
 
         elif net in ("splithttp", "xhttp"):
+            payload["type"] = "xhttp"
             payload["path"] = path
             payload["host"] = host
-            payload["mode"] = mode
-            extra = {
-                "scMaxEachPostBytes": sc_max_each_post_bytes,
-                "scMaxConcurrentPosts": sc_max_concurrent_posts,
-                "scMinPostsIntervalMs": sc_min_posts_interval_ms,
-                "xPaddingBytes": x_padding_bytes,
-                "noGRPCHeader": noGRPCHeader,
-            }
-            if keepAlivePeriod > 0:
-                extra["keepAlivePeriod"] = keepAlivePeriod
-            if xmux:
-                extra["xmux"] = xmux
-            payload["extra"] = json.dumps(extra)
+            payload["mode"] = mode or "auto"
+            if xhttp_extra is not None:
+                payload["extra"] = json.dumps(xhttp_extra, ensure_ascii=False, separators=(",", ":"))
+        elif net == "raw":
+            payload["type"] = "tcp"
 
         elif net == 'kcp':
             payload['seed'] = path
@@ -397,6 +403,7 @@ class V2rayShareLink(str):
                heartbeatPeriod: int = 0,
                keepAlivePeriod: int = 0,
                xmux: dict = {},
+               xhttp_extra: Optional[dict] = None,
                ):
 
         payload = {
@@ -416,21 +423,12 @@ class V2rayShareLink(str):
                 payload["mode"] = "gun"
 
         elif net in ("splithttp", "xhttp"):
+            payload["type"] = "xhttp"
             payload["path"] = path
             payload["host"] = host
-            payload["mode"] = mode
-            extra = {
-                "scMaxEachPostBytes": sc_max_each_post_bytes,
-                "scMaxConcurrentPosts": sc_max_concurrent_posts,
-                "scMinPostsIntervalMs": sc_min_posts_interval_ms,
-                "xPaddingBytes": x_padding_bytes,
-                "noGRPCHeader": noGRPCHeader,
-            }
-            if keepAlivePeriod > 0:
-                extra["keepAlivePeriod"] = keepAlivePeriod
-            if xmux:
-                extra["xmux"] = xmux
-            payload["extra"] = json.dumps(extra)
+            payload["mode"] = mode or "auto"
+            if xhttp_extra is not None:
+                payload["extra"] = json.dumps(xhttp_extra, ensure_ascii=False, separators=(",", ":"))
 
         elif net == 'quic':
             payload['key'] = path
@@ -543,7 +541,7 @@ class V2rayJsonConfig(str):
         return tlsSettings
 
     @staticmethod
-    def reality_config(sni=None, fp=None, pbk=None, sid=None, spx=None) -> dict:
+    def reality_config(sni=None, fp=None, pbk=None, sid=None, spx=None, mldsa65_verify=None) -> dict:
 
         realitySettings = {}
         if sni is not None:
@@ -554,11 +552,13 @@ class V2rayJsonConfig(str):
         realitySettings["show"] = False
 
         if pbk:
-            realitySettings["publicKey"] = pbk
+            realitySettings["password"] = pbk
         if sid:
             realitySettings["shortId"] = sid
         if spx:
             realitySettings["spiderX"] = spx
+        if mldsa65_verify:
+            realitySettings["mldsa65Verify"] = mldsa65_verify
 
         return realitySettings
 
@@ -593,38 +593,45 @@ class V2rayJsonConfig(str):
 
         return httpupgradeSettings
 
-    def splithttp_config(self, path: str = "", host: str = "", random_user_agent: bool = False,
-                         sc_max_each_post_bytes: int = 1000000,
-                         sc_max_concurrent_posts: int = 100,
-                         sc_min_posts_interval_ms: int = 30,
-                         x_padding_bytes: str = "100-1000",
-                         xmux: dict = {},
-                         mode: str = "auto",
-                         noGRPCHeader: bool = False,
-                         keepAlivePeriod: int = 0,
-                         ) -> dict:
-        config = copy.deepcopy(self.settings.get("splithttpSettings", {}))
-
-        config["mode"] = mode
-        if path:
-            config["path"] = path
-        if host:
-            config["host"] = host
+    def xhttp_config(self, path="", host="", random_user_agent=False, mode="auto", extra=None, extra_override=False) -> dict:
+        if extra_override:
+            merged = copy.deepcopy(extra) if isinstance(extra, dict) else {}
+        else:
+            template = self.settings.get("xhttpSettings")
+            if not isinstance(template, dict):
+                template = self.settings.get("splithttpSettings", {})
+            template = copy.deepcopy(template) if isinstance(template, dict) else {}
+            if isinstance(template.get("extra"), dict):
+                base = copy.deepcopy(template["extra"])
+            else:
+                base = {
+                    key: copy.deepcopy(value)
+                    for key, value in template.items()
+                    if key not in ("host", "path", "mode", "extra")
+                }
+            try:
+                base = validate_xhttp_extra(base) or {}
+            except ValueError:
+                base = {}
+            if isinstance(extra, dict):
+                base.update(copy.deepcopy(extra))
+            merged = base
+        try:
+            merged = validate_xhttp_extra(merged) or {}
+        except ValueError:
+            merged = {}
         if random_user_agent:
-            config["headers"]["User-Agent"] = choice(
-                self.user_agent_list)
-        config.setdefault("scMaxEachPostBytes", sc_max_each_post_bytes)
-        config.setdefault("scMaxConcurrentPosts", sc_max_concurrent_posts)
-        config.setdefault("scMinPostsIntervalMs", sc_min_posts_interval_ms)
-        config.setdefault("xPaddingBytes", x_padding_bytes)
-        config["noGRPCHeader"] = noGRPCHeader
-        if xmux:
-            config["xmux"] = xmux
-        if keepAlivePeriod > 0:
-            config["keepAlivePeriod"] = keepAlivePeriod
-        # core will ignore unknown variables
-
-        return config
+            headers = merged.setdefault("headers", {})
+            if not isinstance(headers, dict):
+                headers = {}
+                merged["headers"] = headers
+            headers.setdefault("User-Agent", choice(self.user_agent_list))
+        return {
+            "path": path or "",
+            "host": host or "",
+            "mode": mode or "auto",
+            "extra": merged,
+        }
 
     def grpc_config(self, path: str = "", host: str = "", multiMode: bool = False,
                     random_user_agent: bool = False) -> dict:
@@ -809,7 +816,7 @@ class V2rayJsonConfig(str):
         }
 
     @staticmethod
-    def vless_config(address=None, port=None, id=None, flow="") -> dict:
+    def vless_config(address=None, port=None, id=None, flow="", encryption="none") -> dict:
         return {
             "vnext": [
                 {
@@ -819,7 +826,7 @@ class V2rayJsonConfig(str):
                         {
                             "id": id,
                             "security": "auto",
-                            "encryption": "none",
+                            "encryption": encryption or "none",
                             "email": "https://gozargah.github.io/marzban/",
                             "alterId": 0,
                             "flow": flow
@@ -917,15 +924,11 @@ class V2rayJsonConfig(str):
                             dialer_proxy='',
                             multiMode: bool = False,
                             random_user_agent: bool = False,
-                            sc_max_each_post_bytes: int = 1000000,
-                            sc_max_concurrent_posts: int = 100,
-                            sc_min_posts_interval_ms: int = 30,
-                            x_padding_bytes: str = "100-1000",
-                            xmux: dict = {},
                             mode: str = "auto",
-                            noGRPCHeader: bool = False,
                             heartbeatPeriod: int = 0,
-                            keepAlivePeriod: int = 0,
+                            extra=None,
+                            extra_override: bool = False,
+                            mldsa65_verify=None,
                             ) -> dict:
 
         if net == "ws":
@@ -950,16 +953,15 @@ class V2rayJsonConfig(str):
             network_setting = self.httpupgrade_config(
                 path=path, host=host, random_user_agent=random_user_agent)
         elif net in ("splithttp", "xhttp"):
-            network_setting = self.splithttp_config(path=path, host=host, random_user_agent=random_user_agent,
-                                                    sc_max_each_post_bytes=sc_max_each_post_bytes,
-                                                    sc_max_concurrent_posts=sc_max_concurrent_posts,
-                                                    sc_min_posts_interval_ms=sc_min_posts_interval_ms,
-                                                    x_padding_bytes=x_padding_bytes,
-                                                    xmux=xmux,
-                                                    mode=mode,
-                                                    noGRPCHeader=noGRPCHeader,
-                                                    keepAlivePeriod=keepAlivePeriod,
-                                                    )
+            net = "xhttp"
+            network_setting = self.xhttp_config(
+                path=path,
+                host=host if isinstance(host, str) else "",
+                random_user_agent=random_user_agent,
+                mode=mode,
+                extra=extra,
+                extra_override=extra_override,
+            )
         else:
             network_setting = {}
 
@@ -967,7 +969,7 @@ class V2rayJsonConfig(str):
             tls_settings = self.tls_config(sni=sni, fp=fp, alpn=alpn, ais=ais)
         elif tls == "reality":
             tls_settings = self.reality_config(
-                sni=sni, fp=fp, pbk=pbk, sid=sid, spx=spx)
+                sni=sni, fp=fp, pbk=pbk, sid=sid, spx=spx, mldsa65_verify=mldsa65_verify)
         else:
             tls_settings = None
 
@@ -1016,15 +1018,13 @@ class V2rayJsonConfig(str):
                                                      id=settings['id'])
 
         elif inbound['protocol'] == 'vless':
-            if net in ('tcp', 'raw', 'kcp') and headers != 'http' and tls in ('tls', 'reality'):
-                flow = settings.get('flow', '')
-            else:
-                flow = None
+            flow = settings.get('flow', '') if supports_vless_flow(inbound) else None
 
             outbound["settings"] = self.vless_config(address=address,
                                                      port=port,
                                                      id=settings['id'],
-                                                     flow=flow)
+                                                     flow=flow,
+                                                     encryption=inbound.get("vless_encryption") or "none")
 
         elif inbound['protocol'] == 'trojan':
             outbound["settings"] = self.trojan_config(address=address,
@@ -1061,15 +1061,11 @@ class V2rayJsonConfig(str):
             dialer_proxy=dialer_proxy,
             multiMode=multi_mode,
             random_user_agent=inbound.get('random_user_agent', False),
-            sc_max_each_post_bytes=inbound.get('scMaxEachPostBytes', 1000000),
-            sc_max_concurrent_posts=inbound.get('scMaxConcurrentPosts', 100),
-            sc_min_posts_interval_ms=inbound.get('scMinPostsIntervalMs', 30),
-            x_padding_bytes=inbound.get("xPaddingBytes", "100-1000"),
-            xmux=inbound.get("xmux", {}),
             mode=inbound.get("mode", "auto"),
-            noGRPCHeader=inbound.get("noGRPCHeader", False),
             heartbeatPeriod=inbound.get("heartbeatPeriod", 0),
-            keepAlivePeriod=inbound.get("keepAlivePeriod", 0),
+            extra=inbound.get("xhttp_extra"),
+            extra_override=bool(inbound.get("xhttp_extra_override")),
+            mldsa65_verify=inbound.get("mldsa65Verify"),
         )
 
         mux_json = json.loads(self.mux_template)
