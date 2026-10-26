@@ -123,24 +123,24 @@ docker compose pull
 docker compose up -d
 ```
 
-In GitHub, open Actions, enable workflows once, then run Build manually. That publishes `ghcr.io/disline1337/marzbarren:0.9.0` and `:latest` from `__version__`. No git tag or registry token is required. The upstream installer below still installs `gozargah/marzban`, not this fork.
+The installer in this repository installs `ghcr.io/disline1337/marzbarren`. It does not install `gozargah/marzban`.
 
 
 Run the following command to install Marzban with SQLite database:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install
+sudo bash -c "$(curl -sL https://github.com/Disline1337/Marzbarren/raw/master/marzban.sh)" @ install
 ```
 
 Run the following command to install Marzban with MySQL database:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install --database mysql
+sudo bash -c "$(curl -sL https://github.com/Disline1337/Marzbarren/raw/master/marzban.sh)" @ install --database mysql
 ```
 
 Run the following command to install Marzban with MariaDB database:
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install --database mariadb
+sudo bash -c "$(curl -sL https://github.com/Disline1337/Marzbarren/raw/master/marzban.sh)" @ install --database mariadb
 ```
 
 Once the installation is complete:
@@ -366,7 +366,7 @@ Marzban's backup service efficiently zips all necessary files and sends them to 
 
 Install the Latest Version of Marzban Command:
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install-script
+sudo bash -c "$(curl -sL https://github.com/Disline1337/Marzbarren/raw/master/marzban.sh)" @ install-script
 ```
 
 Setup the Backup Service:

