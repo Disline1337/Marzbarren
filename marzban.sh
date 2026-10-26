@@ -129,7 +129,9 @@ detect_compose() {
 
 install_marzban_script() {
     colorized_echo blue "Installing marzban script"
-    curl -sSL $SCRIPT_URL | install -m 755 /dev/stdin /usr/local/bin/marzban
+    mkdir -p /usr/local/bin
+    curl -fsSL "$SCRIPT_URL" -o /usr/local/bin/marzban
+    chmod 755 /usr/local/bin/marzban
     colorized_echo green "marzban script installed successfully"
 }
 
@@ -1465,7 +1467,9 @@ update_command() {
 
 update_marzban_script() {
     colorized_echo blue "Updating marzban script"
-    curl -sSL "$SCRIPT_URL" | install -m 755 /dev/stdin /usr/local/bin/marzban
+    mkdir -p /usr/local/bin
+    curl -fsSL "$SCRIPT_URL" -o /usr/local/bin/marzban
+    chmod 755 /usr/local/bin/marzban
     colorized_echo green "marzban script updated successfully"
 }
 

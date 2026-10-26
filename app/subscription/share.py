@@ -249,18 +249,18 @@ def _project_host(inbound: dict, host: dict, format_variables: dict):
     sni_list = host["sni"] or inbound["sni"]
     if sni_list:
         salt = secrets.token_hex(8)
-        sni = random.choice(sni_list).replace("*", salt)
+        sni = random.choice(sni_list).replace("*", salt).format_map(format_variables)
 
     req_host = ""
     req_host_list = host["host"] or inbound["host"]
     if req_host_list:
         salt = secrets.token_hex(8)
-        req_host = random.choice(req_host_list).replace("*", salt)
+        req_host = random.choice(req_host_list).replace("*", salt).format_map(format_variables)
 
     address = ""
     if host["address"]:
         salt = secrets.token_hex(8)
-        address = random.choice(host["address"]).replace("*", salt)
+        address = random.choice(host["address"]).replace("*", salt).format_map(format_variables)
 
     if host["path"] is not None:
         path = host["path"].format_map(format_variables)

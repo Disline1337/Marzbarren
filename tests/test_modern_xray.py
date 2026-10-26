@@ -500,6 +500,16 @@ class ProjectionTests(unittest.TestCase):
         plain = dict(inbound, vless_encryption_required=False, network="tcp")
         self.assertEqual(_project_host(plain, cache_host(), {})["vless_encryption"], "none")
         self.assertIsNone(_project_host(plain, cache_host(vless_encryption=client_encryption()), {}))
+        variables = {"SERVER_IP": "198.51.100.8", "SERVER_IPV6": "2001:db8::1", "USERNAME": "alice"}
+        formatted = _project_host(plain, cache_host(
+            address=["{SERVER_IP}"],
+            sni=["{USERNAME}.example"],
+            host=["{SERVER_IPV6}"],
+        ), variables)
+        self.assertEqual(formatted["address"], "198.51.100.8")
+        self.assertEqual(formatted["sni"], "alice.example")
+        self.assertEqual(formatted["host"], "2001:db8::1")
+        self.assertNotIn("{SERVER_IP}", formatted["address"])
 
 
 
