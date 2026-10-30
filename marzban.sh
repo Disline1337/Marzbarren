@@ -1087,11 +1087,11 @@ install_command() {
             install_marzban "$marzban_version" "$database_type"
             echo "Installing ${IMAGE_NAME}:${marzban_version}"
         else
-            echo "Image ${IMAGE_NAME}:${marzban_version} was not found. Use latest or 0.9.0."
+            echo "Image ${IMAGE_NAME}:${marzban_version} was not found. Use latest or 0.9.1."
             exit 1
         fi
     else
-        echo "Invalid version format. Use latest, dev, or 0.9.0."
+        echo "Invalid version format. Use latest, dev, or 0.9.1."
         exit 1
     fi
     up_marzban

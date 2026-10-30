@@ -113,7 +113,7 @@ Marzban is user-friendly, feature-rich and reliable. It lets you to create diffe
 This fork is pulled as a normal image, not built from the upstream installer:
 
 ```bash
-docker pull ghcr.io/disline1337/marzbarren:0.9.0
+docker pull ghcr.io/disline1337/marzbarren:0.9.1
 ```
 
 `docker-compose.yml` already uses that tag. After the image exists:

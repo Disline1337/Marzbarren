@@ -168,7 +168,7 @@ class RoutingStoreTests(unittest.TestCase):
         before = crud.get_client_routing_settings(self.db).model_dump()
         for payload in (
             {"happ": {"direct_sites": ["https://bad.example"]}, "mihomo": {}},
-            {"happ": {"direct_sites": ["*.example.com"]}, "mihomo": {}},
+            {"happ": {"direct_sites": ["*.*.example.com"]}, "mihomo": {}},
             {"happ": {"direct_ips": ["10.0.0.0/99"]}, "mihomo": {}},
             {"happ": {"direct_sites": ["example.com"], "proxy_sites": ["example.com"]}, "mihomo": {}},
             {"happ": {"geoip_url": "https://user:pass@example.com/geoip.dat"}, "mihomo": {}},
@@ -193,6 +193,27 @@ class RoutingStoreTests(unittest.TestCase):
         ))
         self.assertEqual(saved.happ.direct_sites, ["example.com", "xn--mnchen-3ya.de", "geosite:CN"])
         self.assertEqual(saved.happ.direct_ips, ["10.0.0.0/8", "2001:db8::1"])
+
+    def test_happ_and_mihomo_accept_domain_zones(self):
+        saved = crud.update_client_routing_settings(self.db, routing(
+            happ=HappRoutingProfile(
+                direct_sites=["*.VK.COM", "domain:Yandex.ru", "full:www.example.com", ".mail.ru"],
+            ),
+            mihomo=MihomoRoutingProfile(
+                enabled=True,
+                rules=[
+                    MihomoRoutingRule(type="domain_suffix", value="*.VK.COM", action="direct"),
+                    MihomoRoutingRule(type="domain", value="exact.example", action="direct"),
+                ],
+            ),
+        ))
+        self.assertEqual(saved.happ.direct_sites, [
+            "domain:vk.com", "domain:yandex.ru", "full:www.example.com", "domain:mail.ru",
+        ])
+        self.assertEqual(saved.mihomo.rules[0].value, "vk.com")
+        self.assertEqual(saved.mihomo.rules[1].value, "exact.example")
+        with self.assertRaises(ValidationError):
+            MihomoRoutingRule(type="domain", value="*.vk.com", action="direct")
 
     def test_happ_stamp_advances_only_when_happ_changes(self):
         with patch("app.db.crud.time.time", return_value=1_700_000_000):

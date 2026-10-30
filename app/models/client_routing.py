@@ -73,6 +73,15 @@ def _ascii_domain(value: str) -> str:
     raise ValueError("IP addresses belong in the IP list")
 
 
+def _domain_zone(value: str) -> str:
+    item = value.strip()
+    if item.startswith("*."):
+        item = item[2:]
+    elif item.startswith("."):
+        item = item[1:]
+    return _ascii_domain(item)
+
+
 def normalize_happ_site(value: str) -> str:
     item = value.strip()
     if not item:
@@ -80,8 +89,16 @@ def normalize_happ_site(value: str) -> str:
     geo = _geo_entry(item, "geosite")
     if geo is not None:
         return geo
-    if ":" in item:
+    prefix, separator, remainder = item.partition(":")
+    if separator:
+        kind = prefix.lower()
+        if kind == "domain":
+            return f"domain:{_ascii_domain(remainder)}"
+        if kind == "full":
+            return f"full:{_ascii_domain(remainder)}"
         raise ValueError("invalid domain")
+    if item.startswith("*.") or item.startswith("."):
+        return f"domain:{_domain_zone(item)}"
     return _ascii_domain(item)
 
 
@@ -91,7 +108,10 @@ def normalize_domain(value: str) -> str:
         raise ValueError("empty routing entry")
     if ":" in item:
         raise ValueError("invalid domain")
+    if item.startswith("*.") or item.startswith("."):
+        return _domain_zone(item)
     return _ascii_domain(item)
+
 
 
 def _normalize_ip(value: str, host_prefix: bool) -> str:
@@ -213,7 +233,9 @@ class MihomoRoutingRule(BaseModel):
     @classmethod
     def normalize_value(cls, value: str, info: ValidationInfo) -> str:
         rule_type = info.data.get("type")
-        if rule_type in ("domain", "domain_suffix"):
+        if rule_type == "domain":
+            normalized = _ascii_domain(value.strip())
+        elif rule_type == "domain_suffix":
             normalized = normalize_domain(value)
         elif rule_type in ("geosite", "geoip"):
             tag = value.strip()

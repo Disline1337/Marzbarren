@@ -423,6 +423,7 @@ const HappFields: FC<{ form: RoutingForm }> = ({ form }) => {
               </option>
             ))}
           </Select>
+          <FormHelperText>{t("clientRouting.defaultActionHint")}</FormHelperText>
         </FormControl>
         <FormControl>
           <FormLabel>{t("clientRouting.domainStrategy")}</FormLabel>
@@ -442,12 +443,14 @@ const HappFields: FC<{ form: RoutingForm }> = ({ form }) => {
       />
       {sections.map((section) => (
         <Box key={section}>
-          <Text fontWeight="semibold" mb={2}>
-            {t(`clientRouting.section.${section}`)}
+          <Text fontWeight="semibold">{t(`clientRouting.section.${section}`)}</Text>
+          <Text fontSize="sm" color="gray.500" mb={2}>
+            {t(`clientRouting.section.${section}Help`)}
           </Text>
           <ListField
             label={t("clientRouting.sites")}
             example={t("clientRouting.sitesExample")}
+            hint={t("clientRouting.happSitesHint")}
             name={`happ.${section}_sites`}
             form={form}
           />
@@ -484,7 +487,9 @@ const MihomoFields: FC<{ form: RoutingForm; rules: RoutingRules }> = ({
             </option>
           ))}
         </Select>
-        <FormHelperText>{t("clientRouting.matchHint")}</FormHelperText>
+        <FormHelperText>
+          {t("clientRouting.defaultActionHint")} {t("clientRouting.matchHint")}
+        </FormHelperText>
       </FormControl>
       <UrlFields
         geoipName="mihomo.geoip_url"
@@ -492,6 +497,9 @@ const MihomoFields: FC<{ form: RoutingForm; rules: RoutingRules }> = ({
         form={form}
       />
       <Text fontWeight="semibold">{t("clientRouting.rules")}</Text>
+      <Text fontSize="sm" color="gray.500">
+        {t("clientRouting.suffixHint")}
+      </Text>
       {rules.fields.map((field, index) => (
         <HStack
           key={field.id}
@@ -510,7 +518,14 @@ const MihomoFields: FC<{ form: RoutingForm; rules: RoutingRules }> = ({
           </FormControl>
           <FormControl>
             <FormLabel>{t("clientRouting.ruleValue")}</FormLabel>
-            <Input {...form.register(`mihomo.rules.${index}.value`)} />
+            <Input
+              placeholder={t(
+                `clientRouting.rulePlaceholder.${form.watch(
+                  `mihomo.rules.${index}.type`
+                )}`
+              )}
+              {...form.register(`mihomo.rules.${index}.value`)}
+            />
           </FormControl>
           <FormControl>
             <FormLabel>{t("clientRouting.ruleAction")}</FormLabel>
@@ -556,7 +571,7 @@ const MihomoFields: FC<{ form: RoutingForm; rules: RoutingRules }> = ({
         alignSelf="start"
         size="sm"
         onClick={() =>
-          rules.append({ type: "domain", value: "", action: "proxy" })
+          rules.append({ type: "domain_suffix", value: "", action: "direct" })
         }
       >
         {t("clientRouting.add")}
@@ -590,14 +605,16 @@ const ListField: FC<{
   name: HappListName;
   label: string;
   example: string;
-}> = ({ form, name, label, example }) => {
+  hint?: string;
+}> = ({ form, name, label, example, hint }) => {
   const { t } = useTranslation();
   return (
     <FormControl mb={3}>
       <FormLabel>{label}</FormLabel>
-      <Textarea rows={4} {...form.register(name)} />
+      <Textarea rows={4} placeholder={example} {...form.register(name)} />
       <FormHelperText>
         {t("clientRouting.onePerLine")} {example}
+        {hint ? ` ${hint}` : ""}
       </FormHelperText>
     </FormControl>
   );
