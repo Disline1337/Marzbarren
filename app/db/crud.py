@@ -138,6 +138,7 @@ def add_host(db: Session, inbound_tag: str, host: ProxyHostModify) -> List[Proxy
             vless_encryption=host.vless_encryption,
             xhttp_mode=host.xhttp_mode,
             xhttp_extra=host.xhttp_extra,
+            finalmask=host.finalmask,
         )
     )
     db.commit()
@@ -180,6 +181,7 @@ def update_hosts(db: Session, inbound_tag: str, modified_hosts: List[ProxyHostMo
             vless_encryption=host.vless_encryption,
             xhttp_mode=host.xhttp_mode,
             xhttp_extra=host.xhttp_extra,
+            finalmask=host.finalmask,
         ) for host in modified_hosts
     ]
     db.commit()

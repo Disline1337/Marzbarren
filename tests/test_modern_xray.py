@@ -14,13 +14,17 @@ from sqlalchemy.orm import Session
 from tests.hwid_support import Base, crud, load_file
 import app
 from app import xray
-from app.models.proxy import ProxyHost, validate_vless_client_encryption, validate_xhttp_extra
+from app.models.proxy import ProxyHost, validate_finalmask, validate_vless_client_encryption, validate_xhttp_extra
 
 app.__version__ = "test"
 system = load_file("tests.modern_xray_system", "app/routers/system.py")
 migration = load_file(
     "tests.modern_xray_migration",
     "app/db/migrations/versions/c8d2e4f607a1_add_modern_xray_host_settings.py",
+)
+finalmask_migration = load_file(
+    "tests.finalmask_migration",
+    "app/db/migrations/versions/d4e5f607a8b9_add_host_finalmask.py",
 )
 xray_config = load_file("tests.modern_xray_config", "app/xray/config.py")
 
@@ -276,6 +280,7 @@ def cache_host(**kwargs):
         "vless_encryption": None,
         "xhttp_mode": None,
         "xhttp_extra": None,
+        "finalmask": None,
     }
     values.update(kwargs)
     return values
@@ -655,6 +660,121 @@ class FlowTests(unittest.TestCase):
                 box.add("node", "203.0.113.10", inbound, settings)
                 self.assertEqual(box.config["outbounds"][-1].get("flow"), "xtls-rprx-vision")
 
+    def test_vision_udp443_is_client_only(self):
+        from contextlib import contextmanager
+        from app.db.models import Proxy, User
+        from app.models.proxy import ProxyTypes, VLESSSettings
+        from app.models.user import UserStatus
+        from xray_api.types.account import XTLSFlows
+
+        stored_settings = VLESSSettings(flow="xtls-rprx-vision-udp443")
+        self.assertEqual(stored_settings.dict(no_obj=True)["flow"], "xtls-rprx-vision-udp443")
+
+        loaded = xray_config.XRayConfig(minimal_config([
+            {
+                "tag": "raw",
+                "protocol": "vless",
+                "port": 443,
+                "settings": {"decryption": "none"},
+                "streamSettings": {"network": "raw", "security": "reality", "realitySettings": {
+                    "password": "pbk", "shortIds": ["abcd"],
+                }},
+            },
+            {
+                "tag": "plain-xhttp",
+                "protocol": "vless",
+                "port": 8443,
+                "settings": {"decryption": "none"},
+                "streamSettings": {"network": "xhttp", "xhttpSettings": {"path": "/plain", "mode": "packet-up"}},
+            },
+            {
+                "tag": "enc-xhttp",
+                "protocol": "vless",
+                "port": 8444,
+                "settings": {"decryption": "mlkem768x25519plus.native.600s.secret"},
+                "streamSettings": {"network": "xhttp", "security": "none", "xhttpSettings": {"path": "/enc"}},
+            },
+        ]), api_port=18082)
+        stored = {"id": "11111111-1111-1111-1111-111111111111", "flow": "xtls-rprx-vision-udp443"}
+        self.db.add(Proxy(user=User(username="alice", status=UserStatus.active), type=ProxyTypes.VLESS, settings=stored))
+        self.db.commit()
+
+        @contextmanager
+        def use_test_db():
+            yield self.db
+
+        with patch.object(xray_config, "GetDB", use_test_db):
+            generated = loaded.include_db_users()
+        by_tag = {}
+        for inbound in generated["inbounds"]:
+            if inbound.get("protocol") != "vless":
+                continue
+            client = inbound["settings"]["clients"][0]
+            by_tag[inbound["tag"]] = client.get("flow", "")
+        self.assertEqual(by_tag["raw"], "xtls-rprx-vision")
+        self.assertEqual(by_tag["plain-xhttp"], "")
+        self.assertEqual(by_tag["enc-xhttp"], "xtls-rprx-vision")
+        self.assertEqual(stored["flow"], "xtls-rprx-vision-udp443")
+
+        import sys
+        import types
+        node_mod = types.ModuleType("app.xray.node")
+        node_mod.XRayNode = object
+        sys.modules["app.xray.node"] = node_mod
+        operations = load_file("tests.modern_xray_operations_udp443", "app/xray/operations.py")
+        captured = []
+        operations._add_user_to_inbound = lambda api, tag, account: captured.append((tag, account.flow))
+        operations._alter_inbound_user = lambda api, tag, account: captured.append(("update:" + tag, account.flow))
+        xray.config = loaded
+        xray.api = object()
+        xray.nodes = {}
+        fake_user = SimpleNamespace(
+            inbounds={ProxyTypes.VLESS: ["raw", "plain-xhttp", "enc-xhttp"]},
+            proxies={ProxyTypes.VLESS: VLESSSettings(flow=XTLSFlows.VISION_UDP443)},
+        )
+        with patch.object(operations.UserResponse, "model_validate", return_value=fake_user):
+            operations.add_user(SimpleNamespace(id=1, username="alice"))
+            operations.update_user(SimpleNamespace(id=1, username="alice"))
+        self.assertEqual(dict(item for item in captured if not item[0].startswith("update")), {
+            "raw": XTLSFlows.VISION,
+            "plain-xhttp": XTLSFlows.NONE,
+            "enc-xhttp": XTLSFlows.VISION,
+        })
+        self.assertNotIn(XTLSFlows.VISION_UDP443, dict(item for item in captured if not item[0].startswith("update")).values())
+        self.assertEqual(fake_user.proxies[ProxyTypes.VLESS].flow, "xtls-rprx-vision-udp443")
+
+        from app.subscription.v2ray import V2rayJsonConfig, V2rayShareLink
+        from app.subscription.clash import ClashMetaConfiguration
+        from app.subscription.singbox import SingBoxConfiguration
+        settings = {"id": stored["id"], "flow": stored["flow"]}
+        for tag, expect in (
+            ("raw", "xtls-rprx-vision-udp443"),
+            ("plain-xhttp", None),
+            ("enc-xhttp", "xtls-rprx-vision-udp443"),
+        ):
+            inbound = dict(loaded.inbounds_by_tag[tag])
+            inbound["header_type"] = inbound.get("header_type", "")
+            inbound["fragment_setting"] = inbound.get("fragment_setting")
+            inbound["noise_setting"] = inbound.get("noise_setting")
+            inbound["sni"] = inbound.get("sni") or ""
+            host = inbound.get("host") or ""
+            inbound["host"] = host[0] if isinstance(host, list) and host else ""
+            inbound["path"] = inbound.get("path") or ""
+            native = V2rayJsonConfig()
+            native.add("node", "203.0.113.10", inbound, settings)
+            flow = native.config[0]["outbounds"][0]["settings"]["vnext"][0]["users"][0].get("flow")
+            self.assertEqual(flow, expect)
+            link = V2rayShareLink()
+            link.add("node", "203.0.113.10", inbound, settings)
+            self.assertEqual("flow=xtls-rprx-vision-udp443" in link.links[0], expect == "xtls-rprx-vision-udp443")
+            if tag == "raw":
+                meta = ClashMetaConfiguration()
+                meta.add("node", "203.0.113.10", inbound, settings)
+                self.assertEqual(meta.data["proxies"][0].get("flow"), "xtls-rprx-vision-udp443")
+                box = SingBoxConfiguration()
+                box.add("node", "203.0.113.10", inbound, settings)
+                self.assertEqual(box.config["outbounds"][-1].get("flow"), "xtls-rprx-vision-udp443")
+
 class ExportContractTests(unittest.TestCase):
     def test_uri_json_and_mihomo_keep_or_skip_modern_fields(self):
         from urllib.parse import parse_qs, urlsplit
@@ -727,6 +847,192 @@ class ExportContractTests(unittest.TestCase):
         rendered = render_template("clash/default.yml", {"proxy_remarks": [], "conf": {}})
         self.assertIn("proxies: [REJECT]", rendered)
         self.assertNotIn("DIRECT", rendered)
+
+
+class FinalMaskMigrationTests(unittest.TestCase):
+    def test_upgrade_and_downgrade_preserve_existing_rows(self):
+        engine = create_engine("sqlite:///:memory:")
+        self.addCleanup(engine.dispose)
+        with engine.begin() as connection:
+            connection.execute(text(
+                "CREATE TABLE hosts (id INTEGER PRIMARY KEY, remark VARCHAR(256) NOT NULL, "
+                "address VARCHAR(256) NOT NULL, inbound_tag VARCHAR(256) NOT NULL)"
+            ))
+            connection.execute(text(
+                "INSERT INTO hosts (id, remark, address, inbound_tag) VALUES (1, 'keep-remark', '203.0.113.10', 'VLESS')"
+            ))
+            with Operations.context(MigrationContext.configure(connection)):
+                finalmask_migration.upgrade()
+                columns = {column["name"] for column in inspect(connection).get_columns("hosts")}
+                self.assertIn("finalmask", columns)
+                row = connection.execute(text("SELECT remark, address, finalmask FROM hosts")).one()
+                self.assertEqual(tuple(row), ("keep-remark", "203.0.113.10", None))
+                finalmask_migration.downgrade()
+            columns = {column["name"] for column in inspect(connection).get_columns("hosts")}
+            self.assertNotIn("finalmask", columns)
+            self.assertEqual(connection.execute(text("SELECT remark, address FROM hosts")).one(), ("keep-remark", "203.0.113.10"))
+
+
+class FinalMaskTests(unittest.TestCase):
+    def test_validate_accepts_object_and_rejects_without_echo(self):
+        ok = {"tcp": [{"type": "sudoku", "settings": {"password": "p"}}]}
+        self.assertIs(validate_finalmask(ok), ok)
+        empty = {}
+        self.assertIs(validate_finalmask(empty), empty)
+        secret = "payload-secret"
+        for value in ({"foo": 1}, [{"type": "sudoku", "settings": {"password": secret}}]):
+            with self.subTest(value=type(value).__name__), self.assertRaises(ValueError) as caught:
+                validate_finalmask(value)
+            self.assertEqual(str(caught.exception), "Invalid FinalMask")
+            self.assertNotIn(secret, str(caught.exception))
+            self.assertNotIn("foo", str(caught.exception))
+
+    def test_inbound_strips_filter_and_leaves_core_copy(self):
+        from contextlib import contextmanager
+
+        raw_mask = {
+            "tcp": [
+                {"type": "filter", "settings": {"allowedSourceIPs": ["10.0.0.0/8"]}},
+                {"type": "sudoku", "settings": {"password": "secret"}},
+            ]
+        }
+        loaded = xray_config.XRayConfig(minimal_config([{
+            "tag": "raw",
+            "protocol": "vless",
+            "port": 443,
+            "settings": {"decryption": "none"},
+            "streamSettings": {
+                "network": "raw",
+                "security": "reality",
+                "realitySettings": {
+                    "password": "pbk",
+                    "shortIds": ["abcd"],
+                    "serverNames": ["www.yahoo.com"],
+                },
+                "finalmask": raw_mask,
+            },
+        }]), api_port=18083)
+        self.assertEqual(loaded.inbounds_by_tag["raw"]["finalmask"], {
+            "tcp": [{"type": "sudoku", "settings": {"password": "secret"}}],
+        })
+        self.assertEqual(raw_mask["tcp"][0]["type"], "filter")
+
+        engine = create_engine("sqlite:///:memory:")
+        self.addCleanup(engine.dispose)
+        db = Session(engine)
+        self.addCleanup(db.close)
+        Base.metadata.create_all(engine)
+
+        @contextmanager
+        def use_test_db():
+            yield db
+
+        with patch.object(xray_config, "GetDB", use_test_db):
+            generated = loaded.include_db_users()
+        core = next(item for item in generated["inbounds"] if item.get("tag") == "raw")
+        self.assertEqual(core["streamSettings"]["finalmask"]["tcp"][0]["type"], "filter")
+
+    def test_host_inherit_clear_override_and_legacy_omit(self):
+        from app.utils import system as system_utils
+        from app.subscription.clash import ClashMetaConfiguration
+        from app.subscription.singbox import SingBoxConfiguration
+        from app.subscription.v2ray import V2rayJsonConfig, V2rayShareLink
+
+        with patch.object(system_utils, "get_public_ip", return_value="127.0.0.1"), patch.object(
+            system_utils, "get_public_ipv6", return_value="::1"
+        ):
+            from app.subscription.share import _project_host
+
+        inbound = {
+            "tag": "raw",
+            "protocol": "vless",
+            "network": "raw",
+            "tls": "reality",
+            "port": 443,
+            "sni": ["www.yahoo.com"],
+            "host": [],
+            "path": "",
+            "header_type": "",
+            "vless_encryption_required": False,
+            "finalmask": {"tcp": [{"type": "sudoku", "settings": {"password": "secret"}}]},
+            "pbk": "pbk",
+            "sids": ["abcd"],
+        }
+        inherited = _project_host(inbound, cache_host(), {})
+        cleared = _project_host(inbound, cache_host(finalmask={}), {})
+        overridden = _project_host(inbound, cache_host(
+            finalmask={"udp": [{"type": "salamander", "settings": {"password": "x"}}]},
+        ), {})
+        self.assertEqual(inherited["finalmask"], {
+            "tcp": [{"type": "sudoku", "settings": {"password": "secret"}}],
+        })
+        self.assertFalse(inherited["finalmask_override"])
+        self.assertEqual(cleared["finalmask"], {})
+        self.assertTrue(cleared["finalmask_override"])
+        self.assertEqual(overridden["finalmask"], {
+            "udp": [{"type": "salamander", "settings": {"password": "x"}}],
+        })
+        self.assertEqual(inbound["finalmask"], {
+            "tcp": [{"type": "sudoku", "settings": {"password": "secret"}}],
+        })
+
+        settings = {"id": "11111111-1111-1111-1111-111111111111"}
+        native = V2rayJsonConfig()
+        native.add("node", inherited["address"], inherited, settings)
+        self.assertEqual(native.config[0]["outbounds"][0]["streamSettings"]["finalmask"], inherited["finalmask"])
+        cleared_native = V2rayJsonConfig()
+        cleared_native.add("node", cleared["address"], cleared, settings)
+        self.assertNotIn("finalmask", cleared_native.config[0]["outbounds"][0]["streamSettings"])
+        overridden_native = V2rayJsonConfig()
+        overridden_native.add("node", overridden["address"], overridden, settings)
+        self.assertEqual(
+            overridden_native.config[0]["outbounds"][0]["streamSettings"]["finalmask"],
+            {"udp": [{"type": "salamander", "settings": {"password": "x"}}]},
+        )
+        meta = ClashMetaConfiguration()
+        meta.add("node", inherited["address"], inherited, settings)
+        self.assertEqual(meta.data["proxies"], [])
+        box = SingBoxConfiguration()
+        box.add("node", inherited["address"], inherited, settings)
+        self.assertFalse(any(item.get("type") == "vless" for item in box.config.get("outbounds", [])))
+        link = V2rayShareLink()
+        link.add("node", inherited["address"], inherited, settings)
+        self.assertTrue(link.links[0].startswith("vless://"))
+        self.assertNotIn("finalmask", link.links[0])
+
+    def test_fragment_setting_stays_independent(self):
+        from app.subscription.v2ray import V2rayJsonConfig
+
+        inbound = {
+            "protocol": "vless",
+            "network": "raw",
+            "tls": "reality",
+            "port": 443,
+            "sni": "cdn.example",
+            "host": "",
+            "path": "",
+            "header_type": "",
+            "fragment_setting": "10-20,10-20,tlshello",
+            "noise_setting": None,
+            "pbk": "public-key",
+            "sid": "abcd",
+            "spx": "",
+            "finalmask": {"tcp": [{"type": "fragment", "settings": {"packets": "tlshello"}}]},
+            "vless_encryption": "none",
+            "fp": "chrome",
+            "alpn": "",
+            "ais": False,
+            "mux_enable": False,
+            "random_user_agent": False,
+        }
+        native = V2rayJsonConfig()
+        native.add("node", "203.0.113.10", inbound, {"id": "11111111-1111-1111-1111-111111111111"})
+        outbounds = native.config[0]["outbounds"]
+        self.assertEqual(
+            outbounds[0]["streamSettings"]["finalmask"],
+            {"tcp": [{"type": "fragment", "settings": {"packets": "tlshello"}}]},
+        )
+        self.assertTrue(any(item.get("protocol") == "freedom" for item in outbounds))
 
 if __name__ == "__main__":
     unittest.main()

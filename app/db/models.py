@@ -300,6 +300,7 @@ class ProxyHost(Base):
     vless_encryption = Column(Text, nullable=True)
     xhttp_mode = Column(String(16), nullable=True)
     xhttp_extra = Column(JSON, nullable=True)
+    finalmask = Column(JSON, nullable=True)
 
 
 class System(Base):

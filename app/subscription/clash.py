@@ -490,6 +490,8 @@ class ClashMetaConfiguration(ClashConfiguration):
         return node
 
     def add(self, remark: str, address: str, inbound: dict, settings: dict):
+        if legacy_client_cannot_represent(inbound):
+            return
         network = "xhttp" if inbound["network"] == "splithttp" else inbound["network"]
         if inbound.get("mldsa65Verify") or network == "kcp" or (network == "quic" and inbound["header_type"] != "none"):
             return

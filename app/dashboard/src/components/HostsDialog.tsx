@@ -158,6 +158,7 @@ const hostsSchema = z.record(
       vless_encryption: z.string().nullable().default(""),
       xhttp_mode: z.string().nullable().default(""),
       xhttp_extra: z.string().nullable().default(""),
+      finalmask: z.string().nullable().default(""),
     })
   )
 );
@@ -222,6 +223,7 @@ const AccordionInbound: FC<AccordionInboundType> = ({
       vless_encryption: "",
       xhttp_mode: "",
       xhttp_extra: "",
+      finalmask: "",
     });
   };
   const duplicateHost = (index: number) => {
@@ -1217,6 +1219,14 @@ const AccordionInbound: FC<AccordionInboundType> = ({
                               </FormControl>
                             </>
                           )}
+                          <FormControl isInvalid={!!accordionErrors?.[index]?.finalmask}>
+                            <FormLabel>{t("hostsDialog.finalmask")}</FormLabel>
+                            <Textarea rows={5} {...form.register(hostKey + "." + index + ".finalmask")} />
+                            <FormHelperText>{t("hostsDialog.finalmaskInfo")}</FormHelperText>
+                            {accordionErrors?.[index]?.finalmask && (
+                              <Error>{accordionErrors[index]?.finalmask?.message}</Error>
+                            )}
+                          </FormControl>
                           <Text fontSize="xs" color="gray.500">{t("hostsDialog.modernXrayCompatibility")}</Text>
                         </VStack>
                       </AccordionPanel>
@@ -1268,6 +1278,8 @@ export const HostsDialog: FC = () => {
             xhttp_mode: host.xhttp_mode ?? "",
             xhttp_extra:
               host.xhttp_extra == null ? "" : JSON.stringify(host.xhttp_extra, null, 2),
+            finalmask:
+              host.finalmask == null ? "" : JSON.stringify(host.finalmask, null, 2),
           })),
         ])
       );
@@ -1308,6 +1320,26 @@ export const HostsDialog: FC = () => {
                 });
               }
             }
+            let mask: Record<string, unknown> | null = null;
+            const rawMask = host.finalmask?.trim() ?? "";
+            if (rawMask) {
+              try {
+                const parsed = JSON.parse(rawMask);
+                if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+                  invalid = true;
+                  form.setError(`${tag}.${index}.finalmask`, {
+                    message: t("hostsDialog.finalmaskInvalid"),
+                  });
+                } else {
+                  mask = parsed;
+                }
+              } catch {
+                invalid = true;
+                form.setError(`${tag}.${index}.finalmask`, {
+                  message: t("hostsDialog.finalmaskInvalid"),
+                });
+              }
+            }
             if (
               inbound?.protocol === "vless" &&
               inbound.vless_encryption_required &&
@@ -1324,6 +1356,7 @@ export const HostsDialog: FC = () => {
               vless_encryption: encryption,
               xhttp_mode: mode,
               xhttp_extra: extra,
+              finalmask: mask,
             };
           }),
         ];

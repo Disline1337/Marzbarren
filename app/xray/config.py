@@ -11,7 +11,7 @@ from sqlalchemy import func
 
 from app.db import GetDB
 from app.db import models as db_models
-from app.models.proxy import ProxyTypes, supports_vless_flow
+from app.models.proxy import ProxyTypes, inbound_vless_flow, supports_vless_flow
 from app.models.user import UserStatus
 from app.utils.crypto import get_cert_SANs
 from config import DEBUG, XRAY_EXCLUDE_INBOUND_TAGS, XRAY_FALLBACKS_INBOUND_TAG
@@ -89,6 +89,29 @@ def _client_xhttp_extra(tag: str, net_settings: dict):
     except ValueError:
         raise ValueError(f"Invalid XHTTP extra in inbound {tag}") from None
     return _without_server_only(projected)
+
+
+def _client_finalmask(tag: str, stream: dict):
+    from app.models.proxy import validate_finalmask
+
+    raw = stream.get("finalmask")
+    if raw is None:
+        return None
+    try:
+        projected = deepcopy(raw)
+        validate_finalmask(projected)
+    except ValueError:
+        raise ValueError(f"Invalid FinalMask in inbound {tag}") from None
+    for key in ("tcp", "udp"):
+        layers = projected.get(key)
+        if not isinstance(layers, list):
+            continue
+        kept = [layer for layer in layers if layer.get("type") != "filter"]
+        if kept:
+            projected[key] = kept
+        else:
+            del projected[key]
+    return projected or None
 
 
 
@@ -255,6 +278,7 @@ class XRayConfig(dict):
                     candidate = stream.get(f"{net}Settings", {})
                     net_settings = candidate if isinstance(candidate, dict) else {}
                 security = stream.get("security")
+                settings["finalmask"] = _client_finalmask(inbound["tag"], stream)
                 tls_settings = stream.get(f"{security}Settings")
 
                 if settings['is_fallback'] is True:
@@ -500,6 +524,8 @@ class XRayConfig(dict):
                         if proxy_type == ProxyTypes.VLESS.value:
                             if client.get('flow') and not supports_vless_flow(inbound):
                                 del client['flow']
+                            elif client.get('flow'):
+                                client['flow'] = inbound_vless_flow(client['flow'])
                         elif client.get('flow') and (
                                 inbound.get('network', 'tcp') not in ('tcp', 'raw', 'kcp')
                                 or

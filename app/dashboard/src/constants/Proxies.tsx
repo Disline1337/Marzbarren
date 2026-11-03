@@ -69,6 +69,7 @@ export const proxyFingerprint: { title: string; value: string }[] = [
 export const XTLSFlows = [
   { title: "none", value: "" },
   { title: "xtls-rprx-vision", value: "xtls-rprx-vision" },
+  { title: "xtls-rprx-vision-udp443", value: "xtls-rprx-vision-udp443" },
 ];
 
 export const shadowsocksMethods = [

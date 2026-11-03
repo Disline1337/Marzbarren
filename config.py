@@ -137,8 +137,8 @@ SUB_SUPPORT_URL = config("SUB_SUPPORT_URL", default="https://t.me/")
 SUB_PROFILE_TITLE = config("SUB_PROFILE_TITLE", default="Subscription")
 
 # HWID device limit (Remnawave / Happ compatible)
-# When enabled, subscription clients must send x-hwid header (unless user limit is 0).
-HWID_ENABLED = config("HWID_ENABLED", default=False, cast=bool)
+# On by default; subscription clients must send x-hwid (unless user limit is 0).
+HWID_ENABLED = config("HWID_ENABLED", default=True, cast=bool)
 HWID_FALLBACK_DEVICE_LIMIT = config("HWID_FALLBACK_DEVICE_LIMIT", default=5, cast=int)
 HWID_MAX_DEVICES_ANNOUNCE = config("HWID_MAX_DEVICES_ANNOUNCE", default="")
 

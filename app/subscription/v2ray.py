@@ -780,7 +780,7 @@ class V2rayJsonConfig(str):
     @staticmethod
     def stream_setting_config(network=None, security=None,
                               network_setting=None, tls_settings=None,
-                              sockopt=None) -> dict:
+                              sockopt=None, finalmask=None) -> dict:
 
         streamSettings = {"network": network}
 
@@ -793,6 +793,9 @@ class V2rayJsonConfig(str):
 
         if sockopt:
             streamSettings['sockopt'] = sockopt
+
+        if isinstance(finalmask, dict) and finalmask:
+            streamSettings["finalmask"] = copy.deepcopy(finalmask)
 
         return streamSettings
 
@@ -929,6 +932,7 @@ class V2rayJsonConfig(str):
                             extra=None,
                             extra_override: bool = False,
                             mldsa65_verify=None,
+                            finalmask=None,
                             ) -> dict:
 
         if net == "ws":
@@ -983,7 +987,8 @@ class V2rayJsonConfig(str):
         return self.stream_setting_config(network=net, security=tls,
                                           network_setting=network_setting,
                                           tls_settings=tls_settings,
-                                          sockopt=sockopt)
+                                          sockopt=sockopt,
+                                          finalmask=finalmask)
 
     def add(self, remark: str, address: str, inbound: dict, settings: dict):
 
@@ -1066,6 +1071,7 @@ class V2rayJsonConfig(str):
             extra=inbound.get("xhttp_extra"),
             extra_override=bool(inbound.get("xhttp_extra_override")),
             mldsa65_verify=inbound.get("mldsa65Verify"),
+            finalmask=inbound.get("finalmask"),
         )
 
         mux_json = json.loads(self.mux_template)

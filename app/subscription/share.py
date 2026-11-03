@@ -296,6 +296,12 @@ def _project_host(inbound: dict, host: dict, format_variables: dict):
             projected["xhttp_extra"] = copy.deepcopy(host["xhttp_extra"])
         elif isinstance(projected.get("xhttp_extra"), dict):
             projected["xhttp_extra"] = copy.deepcopy(projected["xhttp_extra"])
+    override = host.get("finalmask") is not None
+    projected["finalmask_override"] = override
+    if override:
+        projected["finalmask"] = copy.deepcopy(host["finalmask"])
+    elif isinstance(projected.get("finalmask"), dict):
+        projected["finalmask"] = copy.deepcopy(projected["finalmask"])
     return projected
 
 

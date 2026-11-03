@@ -13,6 +13,7 @@ type HostsSchema = Record<
     vless_encryption?: string | null;
     xhttp_mode?: string | null;
     xhttp_extra?: Record<string, unknown> | null;
+    finalmask?: Record<string, unknown> | null;
   }[]
 >;
 

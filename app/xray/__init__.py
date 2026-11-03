@@ -67,6 +67,7 @@ def hosts(storage: dict):
                     "vless_encryption": host.vless_encryption,
                     "xhttp_mode": host.xhttp_mode,
                     "xhttp_extra": None if host.xhttp_extra is None else copy.deepcopy(host.xhttp_extra),
+                    "finalmask": None if host.finalmask is None else copy.deepcopy(host.finalmask),
                 } for host in inbound_hosts if not host.is_disabled
             ]
 

@@ -7,7 +7,7 @@ from app import logger, xray
 from app.db import GetDB, crud
 from app.models.node import NodeStatus
 from app.models.user import UserResponse
-from app.models.proxy import ProxyTypes, supports_vless_flow
+from app.models.proxy import ProxyTypes, inbound_vless_flow, supports_vless_flow
 from app.utils.concurrency import threaded_function
 from app.xray.node import XRayNode
 from xray_api import XRay as XRayAPI
@@ -74,6 +74,8 @@ def add_user(dbuser: "DBUser"):
             if proxy_type == ProxyTypes.VLESS:
                 if getattr(account, 'flow', None) and not supports_vless_flow(inbound):
                     account.flow = XTLSFlows.NONE
+                elif getattr(account, 'flow', None):
+                    account.flow = XTLSFlows(inbound_vless_flow(account.flow) or "")
             elif getattr(account, 'flow', None) and (
                 inbound.get('network', 'tcp') not in ('tcp', 'kcp')
                 or
@@ -122,6 +124,8 @@ def update_user(dbuser: "DBUser"):
             if proxy_type == ProxyTypes.VLESS:
                 if getattr(account, 'flow', None) and not supports_vless_flow(inbound):
                     account.flow = XTLSFlows.NONE
+                elif getattr(account, 'flow', None):
+                    account.flow = XTLSFlows(inbound_vless_flow(account.flow) or "")
             elif getattr(account, 'flow', None) and (
                 inbound.get('network', 'tcp') not in ('tcp', 'kcp')
                 or

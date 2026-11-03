@@ -39,6 +39,7 @@ class VMessAccount(Account):
 class XTLSFlows(Enum):
     NONE = ''
     VISION = 'xtls-rprx-vision'
+    VISION_UDP443 = 'xtls-rprx-vision-udp443'
 
 
 class VLESSAccount(Account):

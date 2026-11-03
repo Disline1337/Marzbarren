@@ -192,6 +192,15 @@ def is_mldsa65_verify(value: str) -> bool:
     decoded = _decode_base64url(value.strip())
     return decoded is not None and len(decoded) == 1952
 
+def inbound_vless_flow(flow) -> str:
+    if flow is None:
+        return ""
+    value = flow.value if hasattr(flow, "value") else str(flow)
+    if value == "xtls-rprx-vision-udp443":
+        return "xtls-rprx-vision"
+    return value
+
+
 def supports_vless_flow(inbound: dict) -> bool:
     """Vision is allowed for encrypted VLESS, otherwise only the historical transport/security set."""
     encryption = inbound.get("vless_encryption")
@@ -208,11 +217,12 @@ def supports_vless_flow(inbound: dict) -> bool:
 
 def legacy_client_cannot_represent(inbound: dict) -> bool:
     encryption = inbound.get("vless_encryption")
+    finalmask = inbound.get("finalmask")
     return bool(inbound.get("mldsa65Verify")) or (
         inbound.get("protocol") == "vless"
         and isinstance(encryption, str)
         and encryption not in ("", "none")
-    )
+    ) or (isinstance(finalmask, dict) and bool(finalmask))
 
 def _padding_triple_valid(segment: str, index: int) -> bool:
     parts = segment.split("-")
@@ -353,6 +363,40 @@ def validate_xhttp_extra(value: Optional[dict]) -> Optional[dict]:
     return value
 
 
+_FINALMASK_KEYS = {"tcp", "udp", "quicParams"}
+
+
+def validate_finalmask(value: Optional[dict]) -> Optional[dict]:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or isinstance(value, list):
+        raise ValueError("Invalid FinalMask")
+    if set(value) - _FINALMASK_KEYS:
+        raise ValueError("Invalid FinalMask")
+    try:
+        _reject_non_json(value)
+    except ValueError:
+        raise ValueError("Invalid FinalMask") from None
+    for key in ("tcp", "udp"):
+        layers = value.get(key)
+        if layers is None:
+            continue
+        if not isinstance(layers, list):
+            raise ValueError("Invalid FinalMask")
+        for layer in layers:
+            if not isinstance(layer, dict):
+                raise ValueError("Invalid FinalMask")
+            kind = layer.get("type")
+            if not isinstance(kind, str) or not kind.strip():
+                raise ValueError("Invalid FinalMask")
+            settings = layer.get("settings")
+            if settings is not None and not isinstance(settings, dict):
+                raise ValueError("Invalid FinalMask")
+    if "quicParams" in value and value["quicParams"] is not None and not isinstance(value["quicParams"], dict):
+        raise ValueError("Invalid FinalMask")
+    return value
+
+
 class FormatVariables(dict):
     def __missing__(self, key):
         return key.join("{}")
@@ -378,6 +422,7 @@ class ProxyHost(BaseModel):
     vless_encryption: Optional[str] = None
     xhttp_mode: Optional[Literal["auto", "packet-up", "stream-up", "stream-one"]] = None
     xhttp_extra: Optional[dict] = None
+    finalmask: Optional[dict] = None
     model_config = ConfigDict(from_attributes=True)
 
     @field_validator("remark", mode="after")
@@ -437,6 +482,13 @@ class ProxyHost(BaseModel):
     @classmethod
     def validate_host_xhttp_extra(cls, value):
         return validate_xhttp_extra(value)
+
+    @field_validator("finalmask", mode="before")
+    @classmethod
+    def validate_host_finalmask(cls, value):
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return validate_finalmask(value)
 
 
 

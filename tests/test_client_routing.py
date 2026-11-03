@@ -321,6 +321,9 @@ class SubscriptionRoutingTests(unittest.TestCase):
         self.secret = patch("app.utils.jwt.get_secret_key", return_value="routing-test-secret")
         self.secret.start()
         self.addCleanup(self.secret.stop)
+        self.hwid_off = patch.object(subscription, "HWID_ENABLED", False)
+        self.hwid_off.start()
+        self.addCleanup(self.hwid_off.stop)
         install_xray()
         self.user = User(
             username="alice",
