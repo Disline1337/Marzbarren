@@ -66,6 +66,12 @@ def main():
         profile = json.loads(base64.b64decode(line[len(prefix):]))
         return profile, text
 
+    def routing_from_header(response, scheme):
+        header = response.headers.get("routing")
+        prefix = f"{scheme}://routing/onadd/"
+        assert header and header.startswith(prefix), "routing header missing"
+        return json.loads(base64.b64decode(header[len(prefix):]))
+
     try:
         anonymous = requests.get(base + "/api/client-routing", timeout=15)
         check(anonymous.status_code == 401, "Anonymous routing settings rejected")
@@ -124,14 +130,16 @@ def main():
         check(first_stamp > 0, "Enabled Happ profile gets a stamp")
 
         happ = sub(path, "Happ/1.63.1")
-        check(happ.status_code == 200 and happ.headers["content-type"].startswith("text/plain"),
-              "Happ response is plain text")
-        profile, _text = routing_profile(happ.content, "happ")
+        check(happ.status_code == 200 and happ.headers["content-type"].startswith("application/json"),
+              "Happ response is JSON")
+        profile = routing_from_header(happ, "happ")
         check(profile["Name"] == "Marzban Routing" and profile["GlobalProxy"] == "true"
               and isinstance(profile["GlobalProxy"], str), "Happ routing profile shape")
         check(profile["DirectSites"] == ["example.com", "geosite:cn"]
               and profile["DirectIp"] == ["geoip:cn"]
               and profile["BlockSites"] == ["ads.example.com"], "Happ routing lists")
+        check(b"happ://routing" not in happ.content and b"outbounds" in happ.content,
+              "Happ JSON body has no routing deeplink")
         incy = sub(path, "INCY/1.0.0/Android")
         incy_profile, _incy_text = routing_profile(incy.content, "incy")
         check(incy_profile["DirectSites"] == ["example.com", "geosite:cn"], "INCY routing profile")
@@ -161,8 +169,9 @@ def main():
         v2ray_json = sub(path + "/v2ray-json", "Happ/1.63.1")
         check(v2ray_json.status_code == 200 and v2ray_json.headers["content-type"].startswith("application/json"),
               "Explicit v2ray-json stays JSON")
-        check("routing" not in v2ray_json.headers and b"happ://routing" not in v2ray_json.content,
-              "Explicit v2ray-json has no routing profile")
+        json_profile = routing_from_header(v2ray_json, "happ")
+        check(json_profile["Name"] == "Marzban Routing" and b"happ://routing" not in v2ray_json.content,
+              "Explicit v2ray-json carries routing header")
         missing = sub(path, "Happ/1.63.1", hwid=None)
         check(missing.status_code == 404 and b"routing/onadd" not in missing.content
               and "routing" not in missing.headers, "Missing HWID hides routing")
@@ -178,7 +187,7 @@ def main():
         ]
         updated = api("PUT", "/client-routing", json=changed)
         check(updated["happ_updated_at"] > first_stamp, "Happ stamp increases")
-        refreshed, _text = routing_profile(sub(path, "Happ/1.63.1").content, "happ")
+        refreshed = routing_from_header(sub(path, "Happ/1.63.1"), "happ")
         check(refreshed["DirectSites"] == ["changed.example"]
               and int(refreshed["LastUpdated"]) == updated["happ_updated_at"], "Updated Happ payload")
         reordered = yaml.safe_load(sub(path, "koala-clash/1.0.0").content)

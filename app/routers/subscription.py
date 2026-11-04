@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Request, Response
 from fastapi.responses import HTMLResponse
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 
 from app.db import Session, crud, get_db
 from app.dependencies import get_validated_sub, validate_dates
@@ -46,6 +46,9 @@ _CLASH_META_AGENT = re.compile(
     r"^(?:clash-verge|clash[-\.]?meta|flclash|mihomo|koala-clash/|clash-party/)",
     re.IGNORECASE,
 )
+
+_HAPP_VERSION = re.compile(r"^Happ/(\d+(?:\.\d+)*)", re.IGNORECASE)
+_HAPP_JSON_MIN = Version("1.63.1")
 
 router = APIRouter(tags=['Subscription'], prefix=f'/{XRAY_SUBSCRIPTION_PATH}')
 
@@ -153,18 +156,51 @@ def _routing_client(user_agent: str) -> Optional[str]:
     return None
 
 
+def _happ_prefers_json(user_agent: str) -> bool:
+    match = _HAPP_VERSION.match(user_agent or "")
+    if not match:
+        return False
+    try:
+        return Version(match.group(1)) >= _HAPP_JSON_MIN
+    except InvalidVersion:
+        return False
+
+
+def _apply_happ_routing_header(db: Session, user_agent: str, response_headers: dict) -> None:
+    client = _routing_client(user_agent)
+    if client is None:
+        return
+    settings = crud.get_client_routing_settings(db)
+    if settings.happ.enabled:
+        response_headers["routing"] = build_routing_link(
+            settings.happ, settings.happ_updated_at, client
+        )
+        return
+    if settings.happ_updated_at > 0:
+        response_headers["routing"] = f"{client}://routing/off"
+
+
 def _happ_link_response(
     db: Session,
     user: UserResponse,
     user_agent: str,
     response_headers: dict,
+    prefer_json: bool = False,
 ) -> Optional[Response]:
-    """Return share links plus a routing profile, or attach an off header and continue."""
+    """Attach Happ/INCY routing. JSON clients get the profile in the routing header."""
     client = _routing_client(user_agent)
     if client is None:
         return None
     settings = crud.get_client_routing_settings(db)
     if settings.happ.enabled:
+        if prefer_json and _happ_prefers_json(user_agent):
+            conf = generate_subscription(
+                user=user, config_format="v2ray-json", as_base64=False, reverse=False
+            )
+            response_headers["routing"] = build_routing_link(
+                settings.happ, settings.happ_updated_at, client
+            )
+            return Response(content=conf, media_type="application/json", headers=response_headers)
         links = generate_subscription(user=user, config_format="v2ray", as_base64=False, reverse=False)
         routing_link = build_routing_link(settings.happ, settings.happ_updated_at, client)
         payload = routing_link if not links else f"{routing_link}\n{links}"
@@ -208,7 +244,7 @@ def user_subscription(
         hwid_result,
     )
 
-    routed = _happ_link_response(db, user, user_agent, response_headers)
+    routed = _happ_link_response(db, user, user_agent, response_headers, prefer_json=True)
     if routed is not None:
         return routed
 
@@ -330,5 +366,7 @@ def user_subscription_with_client_type(
                                  reverse=config["reverse"])
     if client_type == "clash-meta":
         conf = _with_mihomo_routing(db, conf)
+    if client_type == "v2ray-json":
+        _apply_happ_routing_header(db, user_agent, response_headers)
 
     return Response(content=conf, media_type=config["media_type"], headers=response_headers)

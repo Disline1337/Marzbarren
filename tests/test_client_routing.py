@@ -361,24 +361,30 @@ class SubscriptionRoutingTests(unittest.TestCase):
         for agent, scheme in (("Happ/1.63.1", "happ"), ("hApP/2", "happ"), ("INCY/1.0.0/Android", "incy")):
             with self.subTest(agent=agent):
                 response = self.fetch(agent)
-                body = self.decoded(response)
-                lines = body.splitlines()
-                profile = self.payload(lines[0], scheme)
+                if scheme == "incy":
+                    body = self.decoded(response)
+                    profile = self.payload(body.splitlines()[0], scheme)
+                    self.assertNotIn("routing", response.headers)
+                    self.assertIn("203.0.113.10", body)
+                else:
+                    self.assertEqual(response.media_type, "application/json")
+                    profile = self.payload(response.headers["routing"], scheme)
+                    parsed = json.loads(response.body)
+                    self.assertIn("outbounds", json.dumps(parsed))
+                    self.assertNotIn("happ://routing", response.body.decode())
+                    self.assertIn("203.0.113.10", response.body.decode())
                 self.assertEqual(profile["Name"], "Marzban Routing")
                 self.assertEqual(profile["GlobalProxy"], "true")
                 self.assertIsInstance(profile["GlobalProxy"], str)
                 self.assertEqual(profile["DirectSites"], ["example.com", "geosite:CN"])
                 self.assertEqual(profile["DirectIp"], ["geoip:cn", "10.0.0.0/8"])
                 self.assertEqual(profile["BlockSites"], ["ads.example.com"])
-                self.assertIn("203.0.113.10", body)
                 self.assertNotIn(PASSWORD, json.dumps(profile))
-                self.assertNotIn("routing", response.headers)
-                self.assertEqual(sum(line.startswith(f"{scheme}://routing/") for line in lines), 1)
 
     def test_cleared_list_is_sent_as_an_empty_array(self):
         crud.update_client_routing_settings(self.db, routing(happ=enabled_happ()))
         crud.update_client_routing_settings(self.db, routing(happ=enabled_happ(direct_sites=[])))
-        profile = self.payload(self.decoded(self.fetch("Happ/1.63.1")).splitlines()[0], "happ")
+        profile = self.payload(self.fetch("Happ/1.63.1").headers["routing"], "happ")
         self.assertEqual(profile["DirectSites"], [])
         self.assertIn("LastUpdated", profile)
 
@@ -398,17 +404,17 @@ class SubscriptionRoutingTests(unittest.TestCase):
         self.assertNotIn("example.com", disabled.headers["routing"])
         self.assertEqual(crud.get_client_routing_settings(self.db).happ.direct_sites, ["example.com"])
 
-    def test_enabled_happ_profile_replaces_custom_json_but_explicit_json_stays(self):
+    def test_enabled_happ_profile_sends_json_and_routing_header(self):
         crud.update_client_routing_settings(self.db, routing(happ=enabled_happ()))
         with patch.object(subscription, "USE_CUSTOM_JSON_FOR_HAPP", True):
             main = self.fetch("Happ/1.63.1")
             explicit = self.fetch("Happ/1.63.1", "v2ray-json")
-        self.assertEqual(main.media_type, "text/plain")
-        self.assertTrue(self.decoded(main).splitlines()[0].startswith("happ://routing/onadd/"))
-        parsed = json.loads(explicit.body)
-        self.assertNotIn("routing", explicit.headers)
-        self.assertNotIn("happ://routing", explicit.body.decode())
-        self.assertIn("outbounds", json.dumps(parsed))
+        for response in (main, explicit):
+            self.assertEqual(response.media_type, "application/json")
+            self.assertTrue(response.headers["routing"].startswith("happ://routing/onadd/"))
+            parsed = json.loads(response.body)
+            self.assertIn("outbounds", json.dumps(parsed))
+            self.assertNotIn("happ://routing", response.body.decode())
 
     def test_explicit_v2ray_still_receives_happ_routing(self):
         crud.update_client_routing_settings(self.db, routing(happ=enabled_happ()))

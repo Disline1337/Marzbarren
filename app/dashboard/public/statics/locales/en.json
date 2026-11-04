@@ -20,7 +20,7 @@
   "clientRouting.happSitesHint": "vk.com or *.vk.com sends the whole zone, including subdomains. geosite:category-ru is a catalog from the GeoSite file.",
   "clientRouting.hint.effect": "Rules apply after the subscription is updated. Happ and INCY also need a reconnect.",
   "clientRouting.hint.geo": "GeoSite and GeoIP contents depend on the selected files.",
-  "clientRouting.hint.happJson": "An enabled Happ profile serves share links on the main URL for these clients, even when USE_CUSTOM_JSON_FOR_HAPP or USE_CUSTOM_JSON_DEFAULT is on. The explicit /v2ray-json URL stays without these rules.",
+  "clientRouting.hint.happJson": "Happ 1.63.1+ gets native JSON on the main URL and /v2ray-json, with the routing profile in the routing header. Older Happ and INCY still get share links plus a routing line in the body.",
   "clientRouting.hint.mihomo": "An enabled profile replaces routing rules from the template and sets mode: rule. Local overrides or a manual Global mode in the app can change the result.",
   "clientRouting.ips": "IP / geoip",
   "clientRouting.ipsExample": "geoip:cn, 10.0.0.0/8",

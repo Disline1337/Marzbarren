@@ -20,7 +20,7 @@
   "clientRouting.happSitesHint": "vk.com 或 *.vk.com 会匹配整个域及子域。geosite:category-ru 来自 GeoSite 目录。",
   "clientRouting.hint.effect": "规则在订阅更新后生效。Happ 和 INCY 还需要重新连接。",
   "clientRouting.hint.geo": "GeoSite 和 GeoIP 的内容取决于所选文件。",
-  "clientRouting.hint.happJson": "启用 Happ 配置后，这些客户端的主 URL 会返回分享链接，即使开启了 USE_CUSTOM_JSON_FOR_HAPP 或 USE_CUSTOM_JSON_DEFAULT。显式的 /v2ray-json URL 不会包含这些规则。",
+  "clientRouting.hint.happJson": "Happ 1.63.1+ 在主 URL 和 /v2ray-json 上获得原生 JSON，路由配置在 routing 头中。旧版 Happ 和 INCY 仍使用分享链接，路由行在正文里。",
   "clientRouting.hint.mihomo": "启用的配置会替换模板中的路由规则，并设置 mode: rule。应用内的本地覆盖或手动 Global 模式可能改变结果。",
   "clientRouting.ips": "IP / geoip",
   "clientRouting.ipsExample": "geoip:cn, 10.0.0.0/8",

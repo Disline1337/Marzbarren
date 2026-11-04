@@ -20,7 +20,7 @@
   "clientRouting.happSitesHint": "vk.com или *.vk.com — вся зона, включая поддомены. geosite:category-ru — каталог из файла GeoSite.",
   "clientRouting.hint.effect": "Правила вступают в силу после обновления подписки. Для Happ и INCY нужен reconnect.",
   "clientRouting.hint.geo": "Содержимое GeoSite и GeoIP зависит от выбранных файлов.",
-  "clientRouting.hint.happJson": "Включённый профиль Happ отдаёт ссылки на основном URL этих клиентов, даже если включены USE_CUSTOM_JSON_FOR_HAPP или USE_CUSTOM_JSON_DEFAULT. Явный URL /v2ray-json остаётся без этих правил.",
+  "clientRouting.hint.happJson": "Happ 1.63.1+ на основном URL и /v2ray-json получает native JSON, профиль маршрутизации — в заголовке routing. Старый Happ и INCY по-прежнему получают share-ссылки и строку routing в теле.",
   "clientRouting.hint.mihomo": "Включённый профиль заменяет правила маршрутизации из шаблона и выставляет mode: rule. Локальные переопределения или ручной режим Global в приложении могут изменить результат.",
   "clientRouting.ips": "IP / geoip",
   "clientRouting.ipsExample": "geoip:cn, 10.0.0.0/8",
