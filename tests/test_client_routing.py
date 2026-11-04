@@ -415,6 +415,18 @@ class SubscriptionRoutingTests(unittest.TestCase):
             parsed = json.loads(response.body)
             self.assertIn("outbounds", json.dumps(parsed))
             self.assertNotIn("happ://routing", response.body.decode())
+            item = parsed[0]
+            routing_block = item["routing"]
+            self.assertEqual(routing_block["domainStrategy"], "IPIfNonMatch")
+            domains = [name for rule in routing_block["rules"] for name in rule.get("domain") or []]
+            ips = [name for rule in routing_block["rules"] for name in rule.get("ip") or []]
+            self.assertIn("domain:example.com", domains)
+            self.assertIn("geosite:cn", domains)
+            self.assertIn("domain:ads.example.com", domains)
+            self.assertIn("geoip:cn", ips)
+            tags = [outbound.get("tag") for outbound in item["outbounds"]]
+            self.assertEqual(tags[-2:], ["direct", "block"])
+            self.assertEqual(routing_block["rules"][0]["outboundTag"], "block")
 
     def test_explicit_v2ray_still_receives_happ_routing(self):
         crud.update_client_routing_settings(self.db, routing(happ=enabled_happ()))

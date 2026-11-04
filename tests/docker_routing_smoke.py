@@ -140,6 +140,14 @@ def main():
               and profile["BlockSites"] == ["ads.example.com"], "Happ routing lists")
         check(b"happ://routing" not in happ.content and b"outbounds" in happ.content,
               "Happ JSON body has no routing deeplink")
+        happ_doc = json.loads(happ.content)
+        happ_rules = happ_doc[0]["routing"]["rules"]
+        happ_domains = [name for rule in happ_rules for name in rule.get("domain") or []]
+        check(happ_doc[0]["routing"]["domainStrategy"] == "IPIfNonMatch"
+              and "domain:example.com" in happ_domains
+              and "geosite:cn" in happ_domains
+              and "domain:ads.example.com" in happ_domains,
+              "Happ JSON carries Xray routing rules")
         incy = sub(path, "INCY/1.0.0/Android")
         incy_profile, _incy_text = routing_profile(incy.content, "incy")
         check(incy_profile["DirectSites"] == ["example.com", "geosite:cn"], "INCY routing profile")

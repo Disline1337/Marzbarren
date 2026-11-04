@@ -9,7 +9,7 @@ from packaging.version import InvalidVersion, Version
 from app.db import Session, crud, get_db
 from app.dependencies import get_validated_sub, validate_dates
 from app.models.user import SubscriptionUserResponse, UserResponse
-from app.subscription.routing import apply_mihomo_routing, build_routing_link
+from app.subscription.routing import apply_happ_json_routing, apply_mihomo_routing, build_routing_link
 from app.subscription.share import encode_title, generate_subscription
 from app.templates import render_template
 from app.utils.hwid import (
@@ -197,6 +197,7 @@ def _happ_link_response(
             conf = generate_subscription(
                 user=user, config_format="v2ray-json", as_base64=False, reverse=False
             )
+            conf = _with_happ_json_routing(db, conf)
             response_headers["routing"] = build_routing_link(
                 settings.happ, settings.happ_updated_at, client
             )
@@ -215,6 +216,16 @@ def _with_mihomo_routing(db: Session, config: str) -> str:
     settings = crud.get_client_routing_settings(db)
     try:
         return apply_mihomo_routing(config, settings.mihomo)
+    except ValueError:
+        raise HTTPException(
+            status_code=503,
+            detail="Unable to apply client routing to the subscription template",
+        ) from None
+
+def _with_happ_json_routing(db: Session, config: str) -> str:
+    settings = crud.get_client_routing_settings(db)
+    try:
+        return apply_happ_json_routing(config, settings.happ)
     except ValueError:
         raise HTTPException(
             status_code=503,
@@ -367,6 +378,7 @@ def user_subscription_with_client_type(
     if client_type == "clash-meta":
         conf = _with_mihomo_routing(db, conf)
     if client_type == "v2ray-json":
+        conf = _with_happ_json_routing(db, conf)
         _apply_happ_routing_header(db, user_agent, response_headers)
 
     return Response(content=conf, media_type=config["media_type"], headers=response_headers)
