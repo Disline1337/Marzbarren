@@ -656,6 +656,8 @@ class FlowTests(unittest.TestCase):
                 meta = ClashMetaConfiguration()
                 meta.add("node", "203.0.113.10", inbound, settings)
                 self.assertEqual(meta.data["proxies"][0].get("flow"), "xtls-rprx-vision")
+                self.assertEqual(meta.data["proxies"][0]["reality-opts"].get("support-x25519mlkem768"), True)
+                self.assertEqual(meta.data["proxies"][0].get("client-fingerprint"), "chrome")
                 box = SingBoxConfiguration()
                 box.add("node", "203.0.113.10", inbound, settings)
                 self.assertEqual(box.config["outbounds"][-1].get("flow"), "xtls-rprx-vision")

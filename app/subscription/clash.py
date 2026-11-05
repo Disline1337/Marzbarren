@@ -96,6 +96,7 @@ def _mihomo_download(value):
     if "shortId" in reality:
         reality_opts["short-id"] = reality["shortId"]
     if reality_opts:
+        reality_opts["support-x25519mlkem768"] = True
         out["reality-opts"] = reality_opts
     if reality.get("serverName"):
         out["servername"] = reality["serverName"]
@@ -485,8 +486,12 @@ class ClashMetaConfiguration(ClashConfiguration):
         if fp:
             node['client-fingerprint'] = fp
         if pbk:
-            node['reality-opts'] = {"public-key": pbk, "short-id": sid}
-
+            node['reality-opts'] = {
+                "public-key": pbk,
+                "short-id": sid,
+                "support-x25519mlkem768": True,
+            }
+            node.setdefault("client-fingerprint", "chrome")
         return node
 
     def add(self, remark: str, address: str, inbound: dict, settings: dict):
