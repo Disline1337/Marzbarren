@@ -57,11 +57,30 @@ def _alter_inbound_user(api: XRayAPI, inbound_tag: str, account: Account):
         pass
 
 
+def _reload_cores_for_hysteria():
+    config = xray.config.include_db_users()
+    xray.core.restart(config)
+    for node_id, node in list(xray.nodes.items()):
+        if node.connected and node.started:
+            restart_node(node_id, config)
+
+
+def _dbuser_has_hysteria(dbuser: "DBUser") -> bool:
+    proxies = getattr(dbuser, "proxies", None) or []
+    if isinstance(proxies, dict):
+        return any(proxy_type == ProxyTypes.Hysteria for proxy_type in proxies)
+    return any(getattr(proxy, "type", None) == ProxyTypes.Hysteria for proxy in proxies)
+
+
 def add_user(dbuser: "DBUser"):
     user = UserResponse.model_validate(dbuser)
     email = f"{dbuser.id}.{dbuser.username}"
+    hysteria_touched = False
 
     for proxy_type, inbound_tags in user.inbounds.items():
+        if proxy_type == ProxyTypes.Hysteria:
+            hysteria_touched = True
+            continue
         for inbound_tag in inbound_tags:
             inbound = xray.config.inbounds_by_tag.get(inbound_tag, {})
 
@@ -94,15 +113,25 @@ def add_user(dbuser: "DBUser"):
                 if node.connected and node.started:
                     _add_user_to_inbound(node.api, inbound_tag, account)
 
+    if hysteria_touched:
+        _reload_cores_for_hysteria()
+
 
 def remove_user(dbuser: "DBUser"):
     email = f"{dbuser.id}.{dbuser.username}"
+    hysteria_touched = _dbuser_has_hysteria(dbuser)
 
     for inbound_tag in xray.config.inbounds_by_tag:
+        inbound = xray.config.inbounds_by_tag.get(inbound_tag, {})
+        if inbound.get("protocol") == ProxyTypes.Hysteria:
+            continue
         _remove_user_from_inbound(xray.api, inbound_tag, email)
         for node in list(xray.nodes.values()):
             if node.connected and node.started:
                 _remove_user_from_inbound(node.api, inbound_tag, email)
+
+    if hysteria_touched:
+        _reload_cores_for_hysteria()
 
 
 def update_user(dbuser: "DBUser"):
@@ -110,7 +139,12 @@ def update_user(dbuser: "DBUser"):
     email = f"{dbuser.id}.{dbuser.username}"
 
     active_inbounds = []
+    hysteria_touched = False
     for proxy_type, inbound_tags in user.inbounds.items():
+        if proxy_type == ProxyTypes.Hysteria:
+            hysteria_touched = True
+            active_inbounds.extend(inbound_tags)
+            continue
         for inbound_tag in inbound_tags:
             active_inbounds.append(inbound_tag)
             inbound = xray.config.inbounds_by_tag.get(inbound_tag, {})
@@ -148,10 +182,16 @@ def update_user(dbuser: "DBUser"):
         if inbound_tag in active_inbounds:
             continue
         # remove disabled inbounds
+        inbound = xray.config.inbounds_by_tag.get(inbound_tag, {})
+        if inbound.get("protocol") == ProxyTypes.Hysteria:
+            continue
         _remove_user_from_inbound(xray.api, inbound_tag, email)
         for node in list(xray.nodes.values()):
             if node.connected and node.started:
                 _remove_user_from_inbound(node.api, inbound_tag, email)
+
+    if hysteria_touched:
+        _reload_cores_for_hysteria()
 
 
 def remove_node(node_id: int):

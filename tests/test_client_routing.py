@@ -194,6 +194,16 @@ class RoutingStoreTests(unittest.TestCase):
         self.assertEqual(saved.happ.direct_sites, ["example.com", "xn--mnchen-3ya.de", "geosite:CN"])
         self.assertEqual(saved.happ.direct_ips, ["10.0.0.0/8", "2001:db8::1"])
 
+    def test_happ_moves_cidr_and_geoip_from_sites_to_ips(self):
+        saved = crud.update_client_routing_settings(self.db, routing(
+            happ=HappRoutingProfile(
+                direct_sites=["example.com", "10.0.0.1/24", "geoip:private", "vk.com"],
+                direct_ips=["10.1.0.0/16"],
+            )
+        ))
+        self.assertEqual(saved.happ.direct_sites, ["example.com", "vk.com"])
+        self.assertEqual(saved.happ.direct_ips, ["10.1.0.0/16", "10.0.0.0/24", "geoip:private"])
+
     def test_happ_and_mihomo_accept_domain_zones(self):
         saved = crud.update_client_routing_settings(self.db, routing(
             happ=HappRoutingProfile(
@@ -361,18 +371,12 @@ class SubscriptionRoutingTests(unittest.TestCase):
         for agent, scheme in (("Happ/1.63.1", "happ"), ("hApP/2", "happ"), ("INCY/1.0.0/Android", "incy")):
             with self.subTest(agent=agent):
                 response = self.fetch(agent)
-                if scheme == "incy":
-                    body = self.decoded(response)
-                    profile = self.payload(body.splitlines()[0], scheme)
-                    self.assertNotIn("routing", response.headers)
-                    self.assertIn("203.0.113.10", body)
-                else:
-                    self.assertEqual(response.media_type, "application/json")
-                    profile = self.payload(response.headers["routing"], scheme)
-                    parsed = json.loads(response.body)
-                    self.assertIn("outbounds", json.dumps(parsed))
-                    self.assertNotIn("happ://routing", response.body.decode())
-                    self.assertIn("203.0.113.10", response.body.decode())
+                self.assertEqual(response.media_type, "application/json")
+                profile = self.payload(response.headers["routing"], scheme)
+                parsed = json.loads(response.body)
+                self.assertIn("outbounds", json.dumps(parsed))
+                self.assertNotIn(f"{scheme}://routing", response.body.decode())
+                self.assertIn("203.0.113.10", response.body.decode())
                 self.assertEqual(profile["Name"], "Marzban Routing")
                 self.assertEqual(profile["GlobalProxy"], "true")
                 self.assertIsInstance(profile["GlobalProxy"], str)
@@ -447,7 +451,9 @@ class SubscriptionRoutingTests(unittest.TestCase):
             self.assertNotIn("routing", caught.exception.headers or {})
             self.assertNotIn("geosite", str(caught.exception.detail))
             self.assertNotIn(PASSWORD, str(caught.exception.detail))
-        self.assertIn("incy://routing/onadd/", self.decoded(allowed))
+        self.assertTrue(allowed.headers["routing"].startswith("incy://routing/onadd/"))
+        self.assertEqual(allowed.media_type, "application/json")
+        self.assertIn("outbounds", allowed.body.decode())
 
     def test_html_without_hwid_hides_links_and_routing(self):
         crud.update_client_routing_settings(self.db, routing(happ=enabled_happ()))

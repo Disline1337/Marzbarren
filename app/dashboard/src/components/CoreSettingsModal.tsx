@@ -1,76 +1,102 @@
 import {
-  Badge,
-  Box,
-  Button,
-  chakra,
-  CircularProgress,
-  FormControl,
-  FormLabel,
-  HStack,
-  IconButton,
-  Modal,
-  ModalBody,
-  ModalCloseButton,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  ModalOverlay,
-  Select,
-  Text,
-  Tooltip,
-  useToast,
-  useColorMode
-} from "@chakra-ui/react";
-import {
   ArrowPathIcon,
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
+  Bars3BottomLeftIcon,
   Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
 import { joinPaths } from "@remix-run/router";
 import classNames from "classnames";
+import { Badge } from "components/ui/badge";
+import { Button } from "components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "components/ui/dialog";
+import { Label } from "components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "components/ui/tooltip";
 import { useCoreSettings } from "contexts/CoreSettingsContext";
 import { useDashboard } from "contexts/DashboardContext";
+import { useNodesQuery } from "contexts/NodesContext";
+import { cn } from "lib/utils";
 import debounce from "lodash.debounce";
-import { FC, useCallback, useEffect, useRef, useState } from "react";
+import { ComponentProps, FC, useCallback, useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "react-query";
 import { ReadyState } from "react-use-websocket";
 import { useWebSocket } from "react-use-websocket/dist/lib/use-websocket";
+import { toast } from "sonner";
 import { getAuthToken } from "utils/authStorage";
 import { Icon } from "./Icon";
-import { JsonEditor } from "./JsonEditor";
-import "./JsonEditor/themes.js";
-import { useNodesQuery } from "contexts/NodesContext";
+import { JsonEditor, JsonEditorHandle } from "./JsonEditor";
 
 export const MAX_NUMBER_OF_LOGS = 500;
 
-const UsageIcon = chakra(Cog6ToothIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-  },
-});
-export const ReloadIcon = chakra(ArrowPathIcon, {
-  baseStyle: {
-    w: 4,
-    h: 4,
-  },
-});
+export const ReloadIcon = ({
+  className,
+  ...props
+}: ComponentProps<typeof ArrowPathIcon>) => (
+  <ArrowPathIcon className={cn("h-4 w-4", className)} {...props} />
+);
 
-export const FullScreenIcon = chakra(ArrowsPointingOutIcon, {
-  baseStyle: {
-    w: 4,
-    h: 4,
-  },
-});
-export const ExitFullScreenIcon = chakra(ArrowsPointingInIcon, {
-  baseStyle: {
-    w: 3,
-    h: 3,
-  },
-});
+export const FullScreenIcon = ({
+  className,
+  ...props
+}: ComponentProps<typeof ArrowsPointingOutIcon>) => (
+  <ArrowsPointingOutIcon className={cn("h-4 w-4", className)} {...props} />
+);
+
+export const ExitFullScreenIcon = ({
+  className,
+  ...props
+}: ComponentProps<typeof ArrowsPointingInIcon>) => (
+  <ArrowsPointingInIcon className={cn("h-3 w-3", className)} {...props} />
+);
+
+export const FormatIcon = ({
+  className,
+  ...props
+}: ComponentProps<typeof Bars3BottomLeftIcon>) => (
+  <Bars3BottomLeftIcon className={cn("h-4 w-4", className)} {...props} />
+);
+
+const Spinner = ({ className }: { className?: string }) => (
+  <svg
+    className={cn("h-4 w-4 animate-spin", className)}
+    viewBox="0 0 24 24"
+    fill="none"
+    aria-hidden
+  >
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    />
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+    />
+  </svg>
+);
 
 const getStatus = (status: string) => {
   return {
@@ -107,10 +133,14 @@ const getWebsocketUrl = (nodeID: string) => {
 };
 
 let logsTmp: string[] = [];
+function toJsonText(config: unknown): string {
+  if (typeof config === "string") {
+    return config.trim() ? config : "{\n}";
+  }
+  return JSON.stringify(config ?? {}, null, 4);
+}
+
 const CoreSettingModalContent: FC = () => {
-
-  const { colorMode } = useColorMode();
-
   const { data: nodes } = useNodesQuery();
   const disabled = false;
   const [selectedNode, setNode] = useState<string>("");
@@ -139,13 +169,12 @@ const CoreSettingModalContent: FC = () => {
   const logsDiv = useRef<HTMLDivElement | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const { t } = useTranslation();
-  const toast = useToast();
   const form = useForm({
-    defaultValues: { config: config || {} },
+    defaultValues: { config: toJsonText(config) },
   });
 
   useEffect(() => {
-    if (config) form.setValue("config", config);
+    form.setValue("config", toJsonText(config));
   }, [config]);
 
   useEffect(() => {
@@ -170,7 +199,7 @@ const CoreSettingModalContent: FC = () => {
   );
 
   const { readyState } = useWebSocket(getWebsocketUrl(selectedNode), {
-    onMessage: (e: any) => {
+    onMessage: (e: MessageEvent) => {
       logsTmp.push(e.data);
       if (logsTmp.length > MAX_NUMBER_OF_LOGS)
         logsTmp = logsTmp.splice(0, logsTmp.length - MAX_NUMBER_OF_LOGS);
@@ -197,16 +226,25 @@ const CoreSettingModalContent: FC = () => {
   const { mutate: handleRestartCore, isLoading: isRestarting } =
     useMutation(restartCore);
 
-  const handleOnSave = ({ config }: any) => {
-    updateConfig(config)
+  const jsonEditorApiRef = useRef<JsonEditorHandle>(null);
+  const handleOnSave = async () => {
+    const text = form.getValues("config");
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      toast.error(t("core.invalidJson"), { duration: 3000 });
+      return;
+    }
+    await jsonEditorApiRef.current?.format();
+    const formatted = form.getValues("config");
+    const body =
+      formatted !== text
+        ? (JSON.parse(formatted) as Record<string, unknown>)
+        : parsed;
+    updateConfig(body)
       .then(() => {
-        toast({
-          title: t("core.successMessage"),
-          status: "success",
-          isClosable: true,
-          position: "top",
-          duration: 3000,
-        });
+        toast.success(t("core.successMessage"), { duration: 3000 });
       })
       .catch((e) => {
         let message = t("core.generalErrorMessage");
@@ -216,13 +254,7 @@ const CoreSettingModalContent: FC = () => {
         if (typeof e.response._data.detail === "string")
           message = e.response._data.detail;
 
-        toast({
-          title: message,
-          status: "error",
-          isClosable: true,
-          position: "top",
-          duration: 3000,
-        });
+        toast.error(message, { duration: 3000 });
       });
   };
   const editorRef = useRef<HTMLDivElement>(null);
@@ -238,144 +270,141 @@ const CoreSettingModalContent: FC = () => {
   };
   return (
     <form onSubmit={form.handleSubmit(handleOnSave)}>
-      <ModalBody>
-        <FormControl>
-          <HStack justifyContent="space-between" alignItems="flex-start">
-            <FormLabel>
+      <div className="overflow-visible">
+        <div>
+          <div className="flex flex-row items-start justify-between gap-2">
+            <Label>
               {t("core.configuration")}{" "}
-              {isLoading && <CircularProgress isIndeterminate size="15px" />}
-            </FormLabel>
-            <HStack gap={0}>
-              <Tooltip label="Xray Version" placement="top">
-                <Badge height="100%" textTransform="lowercase">
-                  {version && `v${version}`}
-                </Badge>
+              {isLoading && <Spinner className="inline h-[15px] w-[15px]" />}
+            </Label>
+            <div className="flex flex-row items-center">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge className="h-full lowercase">
+                    {version && `v${version}`}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>Xray Version</TooltipContent>
               </Tooltip>
-            </HStack>
-          </HStack>
-          <Box position="relative" ref={editorRef} minHeight="300px">
+            </div>
+          </div>
+          <div
+            className="relative h-[300px] min-h-[300px] [&:fullscreen]:h-full [&:fullscreen]:min-h-full"
+            ref={editorRef}
+          >
             <Controller
               control={form.control}
               name="config"
               render={({ field }) => (
-                <JsonEditor json={config} onChange={field.onChange} />
+                <JsonEditor
+                  ref={jsonEditorApiRef}
+                  value={field.value}
+                  onChange={field.onChange}
+                />
               )}
             />
-            <IconButton
-              size="xs"
-              aria-label="full screen"
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  aria-label={t("core.format")}
+                  className="absolute right-10 top-2 h-6 w-6"
+                  onClick={() => jsonEditorApiRef.current?.format()}
+                >
+                  <FormatIcon />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t("core.format")}</TooltipContent>
+            </Tooltip>
+            <Button
+              type="button"
+              size="icon"
               variant="ghost"
-              position="absolute"
-              top="2"
-              right="4"
+              aria-label="full screen"
+              className="absolute right-4 top-2 h-6 w-6"
               onClick={handleFullScreen}
             >
               {!isFullScreen ? <FullScreenIcon /> : <ExitFullScreenIcon />}
-            </IconButton>
-          </Box>
-        </FormControl>
-        <FormControl mt="4">
-          <HStack
-            justifyContent="space-between"
+            </Button>
+          </div>
+        </div>
+        <div className="mt-4">
+          <div
+            className="flex flex-row items-center justify-between"
             style={{ paddingBottom: "1rem" }}
           >
-            <HStack>
+            <div className="flex flex-row items-center gap-2">
               {nodes?.[0] && (
                 <Select
-                  size="sm"
-                  style={{ width: "auto" }}
+                  value={selectedNode || "host"}
                   disabled={disabled}
-                  bg={disabled ? "gray.100" : "transparent"}
-                  _dark={{
-                    bg: disabled ? "gray.600" : "transparent",
-                  }}
-                  sx={{
-                    option: {
-                      backgroundColor: colorMode === "dark" ? "#222C3B" : "white"
-                    }
-                  }}
-                  onChange={(v) =>
+                  onValueChange={(value) => {
+                    const node = nodes?.find((s) => String(s.id) === value);
                     handleLog(
-                      v.currentTarget.value,
-                      v.currentTarget.selectedOptions[0].text
-                    )
-                  }
+                      value,
+                      value === "host" ? "Master" : node ? t(node.name) : value
+                    );
+                  }}
                 >
-                  <option key={"host"} value={"host"} defaultChecked>
-                    Master
-                  </option>
-                  {nodes &&
-                    nodes.map((s) => {
-                      return (
-                        <option key={s.address} value={String(s.id)}>
-                          {t(s.name)}
-                        </option>
-                      );
-                    })}
+                  <SelectTrigger className="h-9 w-auto">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="host">Master</SelectItem>
+                    {nodes &&
+                      nodes.map((s) => {
+                        return (
+                          <SelectItem key={s.address} value={String(s.id)}>
+                            {t(s.name)}
+                          </SelectItem>
+                        );
+                      })}
+                  </SelectContent>
                 </Select>
               )}
-              <FormLabel className="w-au">{t("core.logs")}</FormLabel>
-            </HStack>
-            <Text as={FormLabel}>{t(`core.socket.${status}`)}</Text>
-          </HStack>
-          <Box
-            border="1px solid"
-            borderColor="gray.300"
-            bg="#F9F9F9"
-            _dark={{
-              borderColor: "gray.500",
-              bg: "#2e3440",
-            }}
-            borderRadius={5}
-            minHeight="200px"
-            maxHeight={"250px"}
-            p={2}
-            overflowY="auto"
+              <Label className="w-au">{t("core.logs")}</Label>
+            </div>
+            <Label>{t(`core.socket.${status}`)}</Label>
+          </div>
+          <div
+            className="max-h-[250px] min-h-[200px] overflow-y-auto rounded-[5px] border border-gray-300 bg-[#F9F9F9] p-2 dark:border-gray-500 dark:bg-[#2e3440]"
             ref={logsDiv}
           >
             {logs.map((message, i) => (
-              <Text fontSize="xs" opacity={0.8} key={i} whiteSpace="pre-line">
+              <p className="whitespace-pre-line text-xs opacity-80" key={i}>
                 {message}
-              </Text>
+              </p>
             ))}
-          </Box>
-        </FormControl>
-      </ModalBody>
-      <ModalFooter>
-        <HStack w="full" justifyContent="space-between">
-          <HStack>
-            <Box>
-              <Button
-                size="sm"
-                leftIcon={
-                  <ReloadIcon
-                    className={classNames({
-                      "animate-spin": isRestarting,
-                    })}
-                  />
-                }
-                onClick={() => handleRestartCore()}
-              >
-                {t(isRestarting ? "core.restarting" : "core.restartCore")}
-              </Button>
-            </Box>
-          </HStack>
-
-          <HStack>
-            <Button
-              size="sm"
-              variant="solid"
-              colorScheme="primary"
-              px="5"
-              type="submit"
-              isDisabled={isLoading || isPostLoading}
-              isLoading={isPostLoading}
-            >
-              {t("core.save")}
-            </Button>
-          </HStack>
-        </HStack>
-      </ModalFooter>
+          </div>
+        </div>
+      </div>
+      <DialogFooter className="mt-4 sm:justify-between">
+        <div className="flex flex-row items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => handleRestartCore()}
+          >
+            <ReloadIcon
+              className={classNames({
+                "animate-spin": isRestarting,
+              })}
+            />
+            {t(isRestarting ? "core.restarting" : "core.restartCore")}
+          </Button>
+        </div>
+        <Button
+          size="sm"
+          className="px-5"
+          type="submit"
+          disabled={isLoading || isPostLoading}
+        >
+          {isPostLoading && <Spinner />}
+          {t("core.save")}
+        </Button>
+      </DialogFooter>
     </form>
   );
 };
@@ -385,22 +414,23 @@ export const CoreSettingsModal: FC = () => {
   const { t } = useTranslation();
 
   return (
-    <Modal isOpen={isEditingCore} onClose={onClose} size="3xl">
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-      <ModalContent mx="3" w="full">
-        <ModalHeader pt={6}>
-          <HStack gap={2}>
+    <Dialog
+      open={isEditingCore}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-w-4xl overflow-visible overflow-y-visible">
+        <DialogHeader>
+          <DialogTitle className="flex flex-row items-center gap-2 text-lg font-semibold">
             <Icon color="primary">
-              <UsageIcon color="white" />
+              <Cog6ToothIcon className="h-5 w-5 text-white" />
             </Icon>
-            <Text fontWeight="semibold" fontSize="lg">
-              {t("core.title")}
-            </Text>
-          </HStack>
-        </ModalHeader>
-        <ModalCloseButton mt={3} />
+            {t("core.title")}
+          </DialogTitle>
+        </DialogHeader>
         <CoreSettingModalContent />
-      </ModalContent>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 };

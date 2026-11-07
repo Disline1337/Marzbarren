@@ -1,45 +1,33 @@
 import {
-  Alert,
-  AlertIcon,
-  Box,
-  Button,
-  Collapse,
-  Flex,
-  FormControl,
-  FormErrorMessage,
-  FormHelperText,
-  FormLabel,
-  Grid,
-  GridItem,
-  HStack,
-  IconButton,
-  Modal,
-  ModalBody,
-  ModalCloseButton,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  ModalOverlay,
-  Select,
-  Spinner,
-  Switch,
-  Text,
-  Textarea,
-  Tooltip,
-  VStack,
-  chakra,
-  useColorMode,
-  useToast,
-} from "@chakra-ui/react";
-import {
   ChartPieIcon,
+  ExclamationTriangleIcon,
   PencilIcon,
   UserPlusIcon,
 } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Button } from "components/ui/button";
+import { Label } from "components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "components/ui/select";
+import { Switch } from "components/ui/switch";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "components/ui/dialog";
 import { resetStrategy } from "constants/UserSettings";
 import { FilterUsageType, useDashboard } from "contexts/DashboardContext";
 import dayjs from "dayjs";
+import classNames from "classnames";
+import { useTheme } from "next-themes";
 import { FC, useEffect, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 import ReactDatePicker from "react-datepicker";
@@ -53,36 +41,16 @@ import {
   UserInbounds,
 } from "types/User";
 import { relativeExpiryDate } from "utils/dateFormatter";
+import { generateSuccessMessage } from "utils/toastHandler";
 import { z } from "zod";
 import { DeleteIcon } from "./DeleteUserModal";
+import { ReloadIcon } from "./Filters";
 import { HwidDevices } from "./HwidDevices";
 import { Icon } from "./Icon";
 import { Input } from "./Input";
 import { RadioGroup } from "./RadioGroup";
+import { Textarea } from "./Textarea";
 import { UsageFilter, createUsageConfig } from "./UsageFilter";
-import { ReloadIcon } from "./Filters";
-import classNames from "classnames";
-
-const AddUserIcon = chakra(UserPlusIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-  },
-});
-
-const EditUserIcon = chakra(PencilIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-  },
-});
-
-const UserUsageIcon = chakra(ChartPieIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-  },
-});
 
 export type UserDialogProps = {};
 
@@ -124,6 +92,7 @@ const getDefaultValues = (): FormType => {
       vmess: { id: "" },
       trojan: { password: "" },
       shadowsocks: { password: "", method: "chacha20-ietf-poly1305" },
+      hysteria: { auth: "" },
     },
   };
 };
@@ -154,16 +123,17 @@ const baseSchema = {
   proxies: z
     .record(z.string(), z.record(z.string(), z.any()))
     .transform((ins) => {
-      const deleteIfEmpty = (obj: any, key: string) => {
-        if (obj && obj[key] === "") {
-          delete obj[key];
-        }
+      const deleteIfEmpty = (obj: unknown, key: string) => {
+        if (!obj || typeof obj !== "object" || !(key in obj)) return;
+        const record = obj as Record<string, unknown>;
+        if (record[key] === "") delete record[key];
       };
       deleteIfEmpty(ins.vmess, "id");
       deleteIfEmpty(ins.vless, "id");
       deleteIfEmpty(ins.trojan, "password");
       deleteIfEmpty(ins.shadowsocks, "password");
       deleteIfEmpty(ins.shadowsocks, "method");
+      deleteIfEmpty(ins.hysteria, "auth");
       return ins;
     }),
   data_limit: z
@@ -225,6 +195,24 @@ const schema = z.discriminatedUnion("status", [
   }),
 ]);
 
+const ErrorAlert = ({
+  error,
+  className,
+}: {
+  error: string;
+  className?: string;
+}) => (
+  <div
+    className={classNames(
+      "flex items-center gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive",
+      className
+    )}
+  >
+    <ExclamationTriangleIcon className="h-4 w-4 shrink-0" />
+    <span>{error}</span>
+  </div>
+);
+
 export const UserDialog: FC<UserDialogProps> = () => {
   const {
     editingUser,
@@ -240,10 +228,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const isOpen = isCreatingNewUser || isEditing;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>("");
-  const toast = useToast();
   const { t, i18n } = useTranslation();
-
-  const { colorMode } = useColorMode();
+  const { theme } = useTheme();
+  const colorMode = theme === "dark" ? "dark" : "light";
 
   const [usageVisible, setUsageVisible] = useState(false);
   const handleUsageToggle = () => {
@@ -275,12 +262,23 @@ export const UserDialog: FC<UserDialogProps> = () => {
   const [usage, setUsage] = useState(createUsageConfig(colorMode, usageTitle));
   const [usageFilter, setUsageFilter] = useState("1m");
   const fetchUsageWithFilter = (query: FilterUsageType) => {
-    fetchUserUsage(editingUser!, query).then((data: any) => {
+    fetchUserUsage(editingUser!, query).then((data: unknown) => {
+      const usages =
+        data &&
+        typeof data === "object" &&
+        "usages" in data &&
+        data.usages &&
+        typeof data.usages === "object"
+          ? (data.usages as Record<
+              string,
+              { used_traffic: number; node_name: string }
+            >)
+          : {};
       const labels = [];
       const series = [];
-      for (const key in data.usages) {
-        series.push(data.usages[key].used_traffic);
-        labels.push(data.usages[key].node_name);
+      for (const key in usages) {
+        series.push(usages[key].used_traffic);
+        labels.push(usages[key].node_name);
       }
       setUsage(createUsageConfig(colorMode, usageTitle, series, labels));
     });
@@ -322,16 +320,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
     methods[method](body)
       .then(() => {
-        toast({
-          title: t(
-            isEditing ? "userDialog.userEdited" : "userDialog.userCreated",
-            { username: values.username }
-          ),
-          status: "success",
-          isClosable: true,
-          position: "top",
-          duration: 3000,
-        });
+        generateSuccessMessage(
+          t(isEditing ? "userDialog.userEdited" : "userDialog.userCreated", {
+            username: values.username,
+          })
+        );
         onClose();
       })
       .catch((err) => {
@@ -392,147 +385,125 @@ export const UserDialog: FC<UserDialogProps> = () => {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="2xl">
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-      <FormProvider {...form}>
-        <ModalContent mx="3">
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-w-4xl">
+        <FormProvider {...form}>
           <form onSubmit={form.handleSubmit(submit)}>
-            <ModalHeader pt={6}>
-              <HStack gap={2}>
+            <DialogHeader>
+              <DialogTitle className="flex flex-row items-center gap-2">
                 <Icon color="primary">
                   {isEditing ? (
-                    <EditUserIcon color="white" />
+                    <PencilIcon className="h-5 w-5 text-white" />
                   ) : (
-                    <AddUserIcon color="white" />
+                    <UserPlusIcon className="h-5 w-5 text-white" />
                   )}
                 </Icon>
-                <Text fontWeight="semibold" fontSize="lg">
+                <span>
                   {isEditing
                     ? t("userDialog.editUserTitle")
                     : t("createNewUser")}
-                </Text>
-              </HStack>
-            </ModalHeader>
-            <ModalCloseButton mt={3} disabled={disabled} />
-            <ModalBody>
-              <Grid
-                templateColumns={{
-                  base: "repeat(1, 1fr)",
-                  md: "repeat(2, 1fr)",
-                }}
-                gap={3}
-              >
-                <GridItem>
-                  <VStack justifyContent="space-between">
-                    <Flex
-                      flexDirection="column"
-                      gridAutoRows="min-content"
-                      w="full"
-                    >
-                      <Flex flexDirection="row" w="full" gap={2}>
-                        <FormControl mb={"10px"}>
-                          <FormLabel>
-                            <Flex gap={2} alignItems={"center"}>
-                              {t("username")}
-                              {!isEditing && (
-                                <ReloadIcon
-                                  cursor={"pointer"}
-                                  className={classNames({
-                                    "animate-spin": randomUsernameLoading,
-                                  })}
-                                  onClick={() => {
-                                    const randomUsername =
-                                      createRandomUsername();
-                                    form.setValue("username", randomUsername);
-                                    setTimeout(() => {
-                                      setrandomUsernameLoading(false);
-                                    }, 350);
-                                  }}
-                                />
-                              )}
-                            </Flex>
-                          </FormLabel>
-                          <HStack>
+                </span>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="mt-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <div className="flex flex-col justify-between gap-4">
+                    <div className="flex w-full flex-col">
+                      <div className="flex w-full flex-row gap-2">
+                        <div className="mb-2.5 w-full">
+                          <Label className="mb-2 flex items-center gap-2">
+                            {t("username")}
+                            {!isEditing && (
+                              <ReloadIcon
+                                className={classNames("cursor-pointer", {
+                                  "animate-spin": randomUsernameLoading,
+                                })}
+                                onClick={() => {
+                                  const randomUsername = createRandomUsername();
+                                  form.setValue("username", randomUsername);
+                                  setTimeout(() => {
+                                    setrandomUsernameLoading(false);
+                                  }, 350);
+                                }}
+                              />
+                            )}
+                          </Label>
+                          <div className="flex flex-row items-center gap-2">
                             <Input
-                              size="sm"
                               type="text"
-                              borderRadius="6px"
                               error={form.formState.errors.username?.message}
                               disabled={disabled || isEditing}
                               {...form.register("username")}
                             />
                             {isEditing && (
-                              <HStack px={1}>
+                              <div className="flex items-center px-1">
                                 <Controller
                                   name="status"
                                   control={form.control}
                                   render={({ field }) => {
                                     return (
-                                      <Tooltip
-                                        placement="top"
-                                        label={
-                                          "status: " +
-                                          t(`status.${field.value}`)
-                                        }
-                                        textTransform="capitalize"
-                                      >
-                                        <Box>
-                                          <Switch
-                                            colorScheme="primary"
-                                            isChecked={field.value === "active"}
-                                            onChange={(e) => {
-                                              if (e.target.checked) {
-                                                field.onChange("active");
-                                              } else {
-                                                field.onChange("disabled");
-                                              }
-                                            }}
-                                          />
-                                        </Box>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="inline-flex capitalize">
+                                            <Switch
+                                              checked={field.value === "active"}
+                                              onCheckedChange={(checked) => {
+                                                field.onChange(
+                                                  checked
+                                                    ? "active"
+                                                    : "disabled"
+                                                );
+                                              }}
+                                            />
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          {"status: " +
+                                            t(`status.${field.value}`)}
+                                        </TooltipContent>
                                       </Tooltip>
                                     );
                                   }}
                                 />
-                              </HStack>
+                              </div>
                             )}
-                          </HStack>
-                        </FormControl>
+                          </div>
+                        </div>
                         {!isEditing && (
-                          <FormControl flex="1">
-                            <FormLabel whiteSpace={"nowrap"}>
+                          <div className="flex-1">
+                            <Label className="mb-2 block whitespace-nowrap">
                               {t("userDialog.onHold")}
-                            </FormLabel>
+                            </Label>
                             <Controller
                               name="status"
                               control={form.control}
                               render={({ field }) => {
                                 const status = field.value;
                                 return (
-                                  <>
-                                    {status ? (
-                                      <Switch
-                                        colorScheme="primary"
-                                        isChecked={status === "on_hold"}
-                                        onChange={(e) => {
-                                          if (e.target.checked) {
-                                            field.onChange("on_hold");
-                                          } else {
-                                            field.onChange("active");
-                                          }
-                                        }}
-                                      />
-                                    ) : (
-                                      ""
-                                    )}
-                                  </>
+                                  <Switch
+                                    checked={status === "on_hold"}
+                                    onCheckedChange={(checked) => {
+                                      field.onChange(
+                                        checked ? "on_hold" : "active"
+                                      );
+                                    }}
+                                  />
                                 );
                               }}
                             />
-                          </FormControl>
+                          </div>
                         )}
-                      </Flex>
-                      <FormControl mb={"10px"}>
-                        <FormLabel>{t("userDialog.dataLimit")}</FormLabel>
+                      </div>
+                      <div className="mb-2.5">
+                        <Label className="mb-2 block">
+                          {t("userDialog.dataLimit")}
+                        </Label>
                         <Controller
                           control={form.control}
                           name="data_limit"
@@ -541,8 +512,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
                               <Input
                                 endAdornment="GB"
                                 type="number"
-                                size="sm"
-                                borderRadius="6px"
                                 onChange={field.onChange}
                                 disabled={disabled}
                                 error={
@@ -553,60 +522,56 @@ export const UserDialog: FC<UserDialogProps> = () => {
                             );
                           }}
                         />
-                      </FormControl>
-                      <Collapse
-                        in={!!(dataLimit && dataLimit > 0)}
-                        animateOpacity
-                        style={{ width: "100%" }}
-                      >
-                        <FormControl height="66px">
-                          <FormLabel>
+                      </div>
+                      {!!(dataLimit && Number(dataLimit) > 0) && (
+                        <div className="mb-2.5 h-[66px] w-full">
+                          <Label className="mb-2 block">
                             {t("userDialog.periodicUsageReset")}
-                          </FormLabel>
+                          </Label>
                           <Controller
                             control={form.control}
                             name="data_limit_reset_strategy"
                             render={({ field }) => {
                               return (
                                 <Select
-                                  size="sm"
-                                  {...field}
+                                  value={field.value}
+                                  onValueChange={field.onChange}
                                   disabled={disabled}
-                                  bg={disabled ? "gray.100" : "transparent"}
-                                  _dark={{
-                                    bg: disabled ? "gray.600" : "transparent",
-                                  }}
-                                  sx={{
-                                    option: {
-                                      backgroundColor:
-                                        colorMode === "dark"
-                                          ? "#222C3B"
-                                          : "white",
-                                    },
-                                  }}
                                 >
-                                  {resetStrategy.map((s) => {
-                                    return (
-                                      <option key={s.value} value={s.value}>
-                                        {t(
-                                          "userDialog.resetStrategy" + s.title
-                                        )}
-                                      </option>
-                                    );
-                                  })}
+                                  <SelectTrigger
+                                    className={
+                                      disabled ? "bg-muted" : "bg-transparent"
+                                    }
+                                  >
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {resetStrategy.map((s) => {
+                                      return (
+                                        <SelectItem
+                                          key={s.value}
+                                          value={s.value}
+                                        >
+                                          {t(
+                                            "userDialog.resetStrategy" + s.title
+                                          )}
+                                        </SelectItem>
+                                      );
+                                    })}
+                                  </SelectContent>
                                 </Select>
                               );
                             }}
                           />
-                        </FormControl>
-                      </Collapse>
+                        </div>
+                      )}
 
-                      <FormControl mb={"10px"}>
-                        <FormLabel>
+                      <div className="mb-2.5">
+                        <Label className="mb-2 block">
                           {isOnHold
                             ? t("userDialog.onHoldExpireDuration")
                             : t("userDialog.expiryDate")}
-                        </FormLabel>
+                        </Label>
 
                         {isOnHold && (
                           <Controller
@@ -617,15 +582,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                 <Input
                                   endAdornment="Days"
                                   type="number"
-                                  size="sm"
-                                  borderRadius="6px"
-                                  onChange={(on_hold) => {
+                                  onChange={(event) => {
                                     form.setValue("expire", null);
-                                    field.onChange({
-                                      target: {
-                                        value: on_hold,
-                                      },
-                                    });
+                                    field.onChange(event);
                                   }}
                                   disabled={disabled}
                                   error={
@@ -686,9 +645,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                     }}
                                     customInput={
                                       <Input
-                                        size="sm"
                                         type="text"
-                                        borderRadius="6px"
                                         clearable
                                         disabled={disabled}
                                         error={
@@ -698,9 +655,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                     }
                                   />
                                   {field.value ? (
-                                    <FormHelperText>
+                                    <p className="mt-1 text-sm text-muted-foreground">
                                       {t(status, { time: time })}
-                                    </FormHelperText>
+                                    </p>
                                   ) : (
                                     ""
                                   )}
@@ -709,26 +666,22 @@ export const UserDialog: FC<UserDialogProps> = () => {
                             }}
                           />
                         )}
-                      </FormControl>
+                      </div>
 
-                      <FormControl
-                        mb={"10px"}
-                        isInvalid={!!form.formState.errors.note}
-                      >
-                        <FormLabel>{t("userDialog.note")}</FormLabel>
-                        <Textarea {...form.register("note")} />
-                        <FormErrorMessage>
-                          {form.formState.errors?.note?.message}
-                        </FormErrorMessage>
-                      </FormControl>
+                      <div className="mb-2.5">
+                        <Label className="mb-2 block">
+                          {t("userDialog.note")}
+                        </Label>
+                        <Textarea
+                          error={form.formState.errors?.note?.message}
+                          {...form.register("note")}
+                        />
+                      </div>
 
-                      <FormControl
-                        mb={"10px"}
-                        isInvalid={!!form.formState.errors.hwid_device_limit}
-                      >
-                        <FormLabel htmlFor="hwid-device-limit">
+                      <div className="mb-2.5">
+                        <Label htmlFor="hwid-device-limit" className="mb-2 block">
                           {t("userDialog.hwidDeviceLimit")}
-                        </FormLabel>
+                        </Label>
                         <Controller
                           control={form.control}
                           name="hwid_device_limit"
@@ -736,8 +689,6 @@ export const UserDialog: FC<UserDialogProps> = () => {
                             <Input
                               id="hwid-device-limit"
                               type="number"
-                              size="sm"
-                              borderRadius="6px"
                               placeholder={t(
                                 "userDialog.hwidDeviceLimitPlaceholder"
                               )}
@@ -752,76 +703,74 @@ export const UserDialog: FC<UserDialogProps> = () => {
                                 const v = e.target.value;
                                 field.onChange(v === "" ? null : v);
                               }}
+                              error={
+                                form.formState.errors.hwid_device_limit
+                                  ? t("userDialog.hwidInvalidLimit")
+                                  : undefined
+                              }
                             />
                           )}
                         />
-                        <FormErrorMessage>
-                          {t("userDialog.hwidInvalidLimit")}
-                        </FormErrorMessage>
-                        <FormHelperText>
+                        <p className="mt-1 text-sm text-muted-foreground">
                           {t("userDialog.hwidDeviceLimitHelp")}
-                        </FormHelperText>
-                      </FormControl>
-                    </Flex>
+                        </p>
+                      </div>
+                    </div>
                     {error && (
-                      <Alert
-                        status="error"
-                        display={{ base: "none", md: "flex" }}
-                      >
-                        <AlertIcon />
-                        {error}
-                      </Alert>
+                      <ErrorAlert error={error} className="hidden md:flex" />
                     )}
-                  </VStack>
-                </GridItem>
-                <GridItem>
-                  <FormControl
-                    isInvalid={
-                      !!form.formState.errors.selected_proxies?.message
-                    }
-                  >
-                    <FormLabel>{t("userDialog.protocols")}</FormLabel>
-                    <Controller
-                      control={form.control}
-                      name="selected_proxies"
-                      render={({ field }) => {
-                        return (
-                          <RadioGroup
-                            list={[
-                              {
-                                title: "vmess",
-                                description: t("userDialog.vmessDesc"),
-                              },
-                              {
-                                title: "vless",
-                                description: t("userDialog.vlessDesc"),
-                              },
-                              {
-                                title: "trojan",
-                                description: t("userDialog.trojanDesc"),
-                              },
-                              {
-                                title: "shadowsocks",
-                                description: t("userDialog.shadowsocksDesc"),
-                              },
-                            ]}
-                            disabled={disabled}
-                            {...field}
-                          />
-                        );
-                      }}
-                    />
-                    <FormErrorMessage>
+                  </div>
+                </div>
+                <div>
+                  <Label className="mb-2 block">
+                    {t("userDialog.protocols")}
+                  </Label>
+                  <Controller
+                    control={form.control}
+                    name="selected_proxies"
+                    render={({ field }) => {
+                      return (
+                        <RadioGroup
+                          list={[
+                            {
+                              title: "vmess",
+                              description: t("userDialog.vmessDesc"),
+                            },
+                            {
+                              title: "vless",
+                              description: t("userDialog.vlessDesc"),
+                            },
+                            {
+                              title: "trojan",
+                              description: t("userDialog.trojanDesc"),
+                            },
+                            {
+                              title: "shadowsocks",
+                              description: t("userDialog.shadowsocksDesc"),
+                            },
+                            {
+                              title: "hysteria",
+                              description: t("userDialog.hysteriaDesc"),
+                            },
+                          ]}
+                          disabled={disabled}
+                          {...field}
+                        />
+                      );
+                    }}
+                  />
+                  {form.formState.errors.selected_proxies?.message && (
+                    <p className="mt-1 text-sm text-destructive">
                       {t(
                         form.formState.errors.selected_proxies
                           ?.message as string
                       )}
-                    </FormErrorMessage>
-                  </FormControl>
-                </GridItem>
+                    </p>
+                  )}
+                </div>
                 {isEditing && usageVisible && (
-                  <GridItem pt={6} colSpan={{ base: 1, md: 2 }}>
-                    <VStack gap={4}>
+                  <div className="pt-6 md:col-span-2">
+                    <div className="flex flex-col items-center gap-4">
                       <UsageFilter
                         defaultValue={usageFilter}
                         onChange={(filter, query) => {
@@ -829,20 +778,17 @@ export const UserDialog: FC<UserDialogProps> = () => {
                           fetchUsageWithFilter(query);
                         }}
                       />
-                      <Box
-                        width={{ base: "100%", md: "70%" }}
-                        justifySelf="center"
-                      >
+                      <div className="w-full justify-self-center md:w-[70%]">
                         <ReactApexChart
                           options={usage.options}
                           series={usage.series}
                           type="donut"
                         />
-                      </Box>
-                    </VStack>
-                  </GridItem>
+                      </div>
+                    </div>
+                  </div>
                 )}
-              </Grid>
+              </div>
               {isEditing && editingUser?.username && (
                 <HwidDevices
                   key={editingUser.username}
@@ -851,87 +797,97 @@ export const UserDialog: FC<UserDialogProps> = () => {
                   limit={form.watch("hwid_device_limit")}
                 />
               )}
-              {error && (
-                <Alert
-                  mt="3"
-                  status="error"
-                  display={{ base: "flex", md: "none" }}
-                >
-                  <AlertIcon />
-                  {error}
-                </Alert>
-              )}
-            </ModalBody>
-            <ModalFooter mt="3">
-              <HStack
-                justifyContent="space-between"
-                w="full"
-                gap={3}
-                flexDirection={{
-                  base: "column",
-                  sm: "row",
-                }}
-              >
-                <HStack
-                  justifyContent="flex-start"
-                  w={{
-                    base: "full",
-                    sm: "unset",
-                  }}
-                >
+              {error && <ErrorAlert error={error} className="mt-3 md:hidden" />}
+            </div>
+            <DialogFooter className="mt-3 sm:justify-between">
+              <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex w-full flex-row flex-wrap items-center justify-start gap-2 sm:w-auto">
                   {isEditing && (
                     <>
-                      <Tooltip label={t("delete")} placement="top">
-                        <IconButton
-                          aria-label="Delete"
-                          size="sm"
-                          onClick={() => {
-                            onDeletingUser(editingUser);
-                            onClose();
-                          }}
-                        >
-                          <DeleteIcon />
-                        </IconButton>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label="Delete"
+                            onClick={() => {
+                              onDeletingUser(editingUser);
+                              onClose();
+                            }}
+                          >
+                            <DeleteIcon />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t("delete")}</TooltipContent>
                       </Tooltip>
-                      <Tooltip label={t("userDialog.usage")} placement="top">
-                        <IconButton
-                          aria-label="usage"
-                          size="sm"
-                          onClick={handleUsageToggle}
-                        >
-                          <UserUsageIcon />
-                        </IconButton>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            aria-label="usage"
+                            onClick={handleUsageToggle}
+                          >
+                            <ChartPieIcon className="h-4 w-4" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{t("userDialog.usage")}</TooltipContent>
                       </Tooltip>
-                      <Button onClick={handleResetUsage} size="sm">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleResetUsage}
+                      >
                         {t("userDialog.resetUsage")}
                       </Button>
-                      <Button onClick={handleRevokeSubscription} size="sm">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleRevokeSubscription}
+                      >
                         {t("userDialog.revokeSubscription")}
                       </Button>
                     </>
                   )}
-                </HStack>
-                <HStack
-                  w="full"
-                  maxW={{ md: "50%", base: "full" }}
-                  justify="end"
-                >
+                </div>
+                <div className="flex w-full justify-end md:max-w-[50%]">
                   <Button
                     type="submit"
                     size="sm"
-                    px="8"
-                    colorScheme="primary"
-                    leftIcon={loading ? <Spinner size="xs" /> : undefined}
+                    className="px-8"
                     disabled={disabled}
                   >
+                    {loading && (
+                      <svg
+                        className="h-3 w-3 animate-spin"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                        />
+                      </svg>
+                    )}
                     {isEditing ? t("userDialog.editUser") : t("createUser")}
                   </Button>
-                </HStack>
-              </HStack>
-            </ModalFooter>
+                </div>
+              </div>
+            </DialogFooter>
           </form>
-        </ModalContent>
-      </FormProvider>
-    </Modal>
+        </FormProvider>
+      </DialogContent>
+    </Dialog>
   );
 };

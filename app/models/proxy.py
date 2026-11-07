@@ -31,6 +31,7 @@ class ProxyTypes(str, Enum):
     VLESS = "vless"
     Trojan = "trojan"
     Shadowsocks = "shadowsocks"
+    Hysteria = "hysteria"
 
     @property
     def account_model(self):
@@ -53,6 +54,8 @@ class ProxyTypes(str, Enum):
             return TrojanSettings
         if self == self.Shadowsocks:
             return ShadowsocksSettings
+        if self == self.Hysteria:
+            return HysteriaSettings
 
 
 class ProxySettings(BaseModel, use_enum_values=True):
@@ -95,6 +98,22 @@ class ShadowsocksSettings(ProxySettings):
 
     def revoke(self):
         self.password = random_password()
+
+
+class HysteriaSettings(ProxySettings):
+    auth: str = Field(default_factory=lambda: str(uuid4()))
+
+    @field_validator("auth")
+    @classmethod
+    def validate_auth(cls, value):
+        if isinstance(value, str):
+            value = value.strip()
+        if not value:
+            raise ValueError("Hysteria auth is required")
+        return value
+
+    def revoke(self):
+        self.auth = str(uuid4())
 
 
 class ProxyHostSecurity(str, Enum):

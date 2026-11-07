@@ -1,4 +1,3 @@
-import { Box, VStack } from "@chakra-ui/react";
 import { ClientRoutingDialog } from "components/ClientRoutingDialog";
 import { CoreSettingsModal } from "components/CoreSettingsModal";
 import { DeleteUserModal } from "components/DeleteUserModal";
@@ -24,10 +23,10 @@ export const Dashboard: FC = () => {
     fetchInbounds();
   }, []);
   return (
-    <VStack justifyContent="space-between" minH="100vh" p="6" rowGap={4}>
-      <Box w="full">
+    <div className="flex min-h-screen flex-col justify-between gap-4 p-6">
+      <div className="w-full">
         <Header />
-        <Statistics mt="4" />
+        <Statistics className="mt-4" />
         <Filters />
         <UsersTable />
         <UserDialog />
@@ -41,9 +40,9 @@ export const Dashboard: FC = () => {
         <ResetAllUsageModal />
         <CoreSettingsModal />
         <ClientRoutingDialog />
-      </Box>
+      </div>
       <Footer />
-    </VStack>
+    </div>
   );
 };
 

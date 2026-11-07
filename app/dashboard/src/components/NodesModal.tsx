@@ -1,42 +1,34 @@
 import {
-  Accordion,
-  AccordionButton,
-  AccordionIcon,
-  AccordionItem,
-  AccordionPanel,
-  Alert,
-  AlertDescription,
-  AlertIcon,
-  Badge,
-  Box,
-  Button,
-  ButtonProps,
-  chakra,
-  Checkbox,
-  Collapse,
-  FormControl,
-  FormLabel,
-  HStack,
-  IconButton,
-  Modal,
-  ModalBody,
-  ModalCloseButton,
-  ModalContent,
-  ModalHeader,
-  ModalOverlay,
-  Switch,
-  Text,
-  Tooltip,
-  useToast,
-  VStack,
-} from "@chakra-ui/react";
-import {
   EyeIcon,
   EyeSlashIcon,
+  InformationCircleIcon,
   PlusIcon as HeroIconPlusIcon,
   SquaresPlusIcon,
+  ExclamationTriangleIcon,
 } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "components/ui/accordion";
+import { Badge } from "components/ui/badge";
+import { Button, ButtonProps } from "components/ui/button";
+import { Checkbox } from "components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "components/ui/dialog";
+import { Label } from "components/ui/label";
+import { Switch } from "components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "components/ui/tooltip";
 import {
   FetchNodesQueryKey,
   getNodeDefaultValues,
@@ -71,40 +63,15 @@ import { NodeModalStatusBadge } from "./NodeModalStatusBadge";
 import { fetch } from "service/http";
 import { Input } from "./Input";
 
-const CustomInput = chakra(Input, {
-  baseStyle: {
-    bg: "white",
-    _dark: {
-      bg: "gray.700",
-    },
-  },
-});
-
-const ModalIcon = chakra(SquaresPlusIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-  },
-});
-
-const PlusIcon = chakra(HeroIconPlusIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-    strokeWidth: 2,
-  },
-});
-
 type AccordionInboundType = {
-  toggleAccordion: () => void;
   node: NodeType;
+  value: string;
 };
 
-const NodeAccordion: FC<AccordionInboundType> = ({ toggleAccordion, node }) => {
+const NodeAccordion: FC<AccordionInboundType> = ({ node, value }) => {
   const { updateNode, reconnectNode, setDeletingNode } = useNodes();
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const toast = useToast();
   const form = useForm<NodeType>({
     defaultValues: node,
     resolver: zodResolver(NodeSchema),
@@ -113,11 +80,11 @@ const NodeAccordion: FC<AccordionInboundType> = ({ toggleAccordion, node }) => {
 
   const { isLoading, mutate } = useMutation(updateNode, {
     onSuccess: () => {
-      generateSuccessMessage("Node updated successfully", toast);
+      generateSuccessMessage("Node updated successfully");
       queryClient.invalidateQueries(FetchNodesQueryKey);
     },
     onError: (e) => {
-      generateErrorMessage(e, toast, form);
+      generateErrorMessage(e, form);
     },
   });
 
@@ -138,110 +105,86 @@ const NodeAccordion: FC<AccordionInboundType> = ({ toggleAccordion, node }) => {
 
   return (
     <AccordionItem
-      border="1px solid"
-      _dark={{ borderColor: "gray.600" }}
-      _light={{ borderColor: "gray.200" }}
-      borderRadius="4px"
-      p={1}
-      w="full"
+      value={value}
+      className="w-full rounded border border-gray-200 p-1 dark:border-gray-600"
     >
-      <AccordionButton px={2} borderRadius="3px" onClick={toggleAccordion}>
-        <HStack w="full" justifyContent="space-between" pr={2}>
-          <Text
-            as="span"
-            fontWeight="medium"
-            fontSize="sm"
-            flex="1"
-            textAlign="left"
-            color="gray.700"
-            _dark={{ color: "gray.300" }}
-          >
+      <AccordionTrigger className="rounded-sm px-2 py-2 hover:no-underline">
+        <div className="flex w-full flex-row items-center justify-between gap-2 pr-2">
+          <span className="flex-1 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
             {node.name}
-          </Text>
-          <HStack>
+          </span>
+          <div className="flex flex-row items-center gap-2">
             {node.xray_version && (
-              <Badge
-                colorScheme="blue"
-                rounded="full"
-                display="inline-flex"
-                px={3}
-                py={1}
-              >
-                <Text
-                  textTransform="capitalize"
-                  fontSize="0.7rem"
-                  fontWeight="medium"
-                  letterSpacing="tighter"
-                >
+              <Badge className="inline-flex rounded-full bg-blue-100 px-3 py-1 text-blue-800 hover:bg-blue-100 dark:bg-blue-900 dark:text-blue-100 dark:hover:bg-blue-900">
+                <span className="text-[0.7rem] font-medium capitalize tracking-tighter">
                   Xray {node.xray_version}
-                </Text>
+                </span>
               </Badge>
             )}
-            {node.status && <NodeModalStatusBadge status={nodeStatus} compact />}
-          </HStack>
-        </HStack>
-        <AccordionIcon />
-      </AccordionButton>
-      <AccordionPanel px={2} pb={2}>
-        <VStack pb={3} alignItems="flex-start">
+            {node.status && (
+              <NodeModalStatusBadge status={nodeStatus} compact />
+            )}
+          </div>
+        </div>
+      </AccordionTrigger>
+      <AccordionContent className="px-2 pb-2">
+        <div className="flex flex-col items-start gap-4 pb-3">
           {nodeStatus === "error" && (
-            <Alert status="error" size="xs">
-              <Box>
-                <HStack w="full">
-                  <AlertIcon w={4} />
-                  <Text marginInlineEnd={0}>{node.message}</Text>
-                </HStack>
-                <HStack justifyContent="flex-end" w="full">
-                  <Button
-                    size="sm"
-                    aria-label="reconnect node"
-                    leftIcon={<ReloadIcon />}
-                    onClick={() => reconnect()}
-                    disabled={isReconnecting}
-                  >
-                    {isReconnecting
-                      ? t("nodes.reconnecting")
-                      : t("nodes.reconnect")}
-                  </Button>
-                </HStack>
-              </Box>
-            </Alert>
+            <div className="w-full rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+              <div className="flex w-full flex-row items-center gap-2">
+                <ExclamationTriangleIcon className="h-4 w-4 shrink-0" />
+                <p>{node.message}</p>
+              </div>
+              <div className="mt-2 flex w-full flex-row justify-end">
+                <Button
+                  size="sm"
+                  aria-label="reconnect node"
+                  onClick={() => reconnect()}
+                  disabled={isReconnecting}
+                >
+                  <ReloadIcon />
+                  {isReconnecting
+                    ? t("nodes.reconnecting")
+                    : t("nodes.reconnect")}
+                </Button>
+              </div>
+            </div>
           )}
-        </VStack>
+        </div>
         <NodeForm
           form={form}
           mutate={mutate}
           isLoading={isLoading}
           submitBtnText={t("nodes.editNode")}
           btnLeftAdornment={
-            <Tooltip label={t("delete")} placement="top">
-              <IconButton
-                colorScheme="red"
-                variant="ghost"
-                size="sm"
-                aria-label="delete node"
-                onClick={handleDeleteNode}
-              >
-                <DeleteIcon />
-              </IconButton>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  aria-label="delete node"
+                  type="button"
+                  onClick={handleDeleteNode}
+                >
+                  <DeleteIcon />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">{t("delete")}</TooltipContent>
             </Tooltip>
           }
         />
-      </AccordionPanel>
+      </AccordionContent>
     </AccordionItem>
   );
 };
 
 type AddNodeFormType = {
-  toggleAccordion: () => void;
   resetAccordions: () => void;
+  value: string;
 };
 
-const AddNodeForm: FC<AddNodeFormType> = ({
-  toggleAccordion,
-  resetAccordions,
-}) => {
-  const toast = useToast();
+const AddNodeForm: FC<AddNodeFormType> = ({ resetAccordions, value }) => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { addNode } = useNodes();
@@ -255,52 +198,37 @@ const AddNodeForm: FC<AddNodeFormType> = ({
   const { isLoading, mutate } = useMutation(addNode, {
     onSuccess: () => {
       generateSuccessMessage(
-        t("nodes.addNodeSuccess", { name: form.getValues("name") }),
-        toast
+        t("nodes.addNodeSuccess", { name: form.getValues("name") })
       );
       queryClient.invalidateQueries(FetchNodesQueryKey);
       form.reset();
       resetAccordions();
     },
     onError: (e) => {
-      generateErrorMessage(e, toast, form);
+      generateErrorMessage(e, form);
     },
   });
   return (
     <AccordionItem
-      border="1px solid"
-      _dark={{ borderColor: "gray.600" }}
-      _light={{ borderColor: "gray.200" }}
-      borderRadius="4px"
-      p={1}
-      w="full"
+      value={value}
+      className="w-full rounded border border-gray-200 p-1 dark:border-gray-600"
     >
-      <AccordionButton px={2} borderRadius="3px" onClick={toggleAccordion}>
-        <Text
-          as="span"
-          fontWeight="medium"
-          fontSize="sm"
-          flex="1"
-          textAlign="left"
-          color="gray.700"
-          _dark={{ color: "gray.300" }}
-          display="flex"
-          gap={1}
-        >
-          <PlusIcon display={"inline-block"} />{" "}
+      <AccordionTrigger className="rounded-sm px-2 py-2 hover:no-underline">
+        <span className="flex flex-1 items-center gap-1 text-left text-sm font-medium text-gray-700 dark:text-gray-300">
+          <HeroIconPlusIcon className="inline-block h-5 w-5 stroke-2" />
           <span>{t("nodes.addNewMarzbanNode")}</span>
-        </Text>
-      </AccordionButton>
-      <AccordionPanel px={2} py={4}>
+        </span>
+      </AccordionTrigger>
+      <AccordionContent className="px-2 py-4">
         <NodeForm
           form={form}
           mutate={mutate}
           isLoading={isLoading}
           submitBtnText={t("nodes.addNode")}
-          btnProps={{ variant: "solid" }}
+          btnProps={{ variant: "default" }}
           addAsHost
         />
-      </AccordionPanel>
+      </AccordionContent>
     </AccordionItem>
   );
 };
@@ -326,7 +254,7 @@ const NodeForm: NodeFormType = ({
 }) => {
   const { t } = useTranslation();
   const [showCertificate, setShowCertificate] = useState(false);
-  const { data: nodeSettings, isLoading: nodeSettingsLoading } = useQuery({
+  const { data: nodeSettings } = useQuery({
     queryKey: "node-settings",
     queryFn: () =>
       fetch<{
@@ -354,185 +282,206 @@ const NodeForm: NodeFormType = ({
 
   return (
     <form onSubmit={form.handleSubmit((v) => mutate(v))}>
-      <VStack>
+      <div className="flex flex-col gap-4">
         {nodeSettings && nodeSettings.certificate && (
-          <Alert status="info" alignItems="start">
-            <AlertDescription
-              display="flex"
-              flexDirection="column"
-              overflow="hidden"
-            >
+          <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100">
+            <InformationCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="flex w-full flex-col overflow-hidden">
               <span>{t("nodes.connection-hint")}</span>
-              <HStack justify="end" py={2}>
-                <Button
-                  as="a"
-                  colorScheme="primary"
-                  size="xs"
-                  download="ssl_client_cert.pem"
-                  href={URL.createObjectURL(
-                    new Blob([nodeSettings.certificate], { type: "text/plain" })
-                  )}
-                >
-                  {t("nodes.download-certificate")}
+              <div className="flex flex-row justify-end gap-2 py-2">
+                <Button asChild size="sm" variant="default">
+                  <a
+                    download="ssl_client_cert.pem"
+                    href={URL.createObjectURL(
+                      new Blob([nodeSettings.certificate], {
+                        type: "text/plain",
+                      })
+                    )}
+                  >
+                    {t("nodes.download-certificate")}
+                  </a>
                 </Button>
-                <Tooltip
-                  placement="top"
-                  label={t(
-                    !showCertificate
-                      ? "nodes.show-certificate"
-                      : "nodes.show-certificate"
-                  )}
-                >
-                  <IconButton
-                    aria-label={t(
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      aria-label={t(
+                        !showCertificate
+                          ? "nodes.show-certificate"
+                          : "nodes.show-certificate"
+                      )}
+                      onClick={setShowCertificate.bind(null, !showCertificate)}
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-primary"
+                    >
+                      {!showCertificate ? (
+                        <EyeIcon className="h-4 w-4" />
+                      ) : (
+                        <EyeSlashIcon className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    {t(
                       !showCertificate
                         ? "nodes.show-certificate"
                         : "nodes.show-certificate"
                     )}
-                    onClick={setShowCertificate.bind(null, !showCertificate)}
-                    colorScheme="whiteAlpha"
-                    color="primary"
-                    size="xs"
-                  >
-                    {!showCertificate ? (
-                      <EyeIcon width="15px" />
-                    ) : (
-                      <EyeSlashIcon width="15px" />
-                    )}
-                  </IconButton>
+                  </TooltipContent>
                 </Tooltip>
-              </HStack>
-              <Collapse in={showCertificate} animateOpacity>
-                <Text
-                  bg="rgba(255,255,255,.5)"
-                  _dark={{
-                    bg: "rgba(255,255,255,.2)",
-                  }}
-                  rounded="md"
-                  p="2"
-                  lineHeight="1.2"
-                  fontSize="10px"
-                  fontFamily="Courier"
-                  whiteSpace="pre"
-                  overflow="auto"
+              </div>
+              {showCertificate && (
+                <pre
+                  className="cursor-text overflow-auto whitespace-pre rounded-md bg-white/50 p-2 font-mono text-[10px] leading-tight dark:bg-white/20"
                   onClick={(e) => {
                     selectText(e.target as HTMLElement);
                   }}
                 >
                   {nodeSettings.certificate}
-                </Text>
-              </Collapse>
-            </AlertDescription>
-          </Alert>
+                </pre>
+              )}
+            </div>
+          </div>
         )}
 
-        <HStack w="full">
-          <FormControl>
-            <CustomInput
+        <div className="flex w-full flex-row items-center gap-2">
+          <div className="flex-1">
+            <Input
               label={t("nodes.nodeName")}
-              size="sm"
               placeholder="Marzban-S2"
               {...form.register("name")}
               error={form.formState?.errors?.name?.message}
             />
-          </FormControl>
-          <HStack px={1}>
+          </div>
+          <div className="px-1">
             <Controller
               name="status"
               control={form.control}
               render={({ field }) => {
                 return (
-                  <Tooltip
-                    key={field.value}
-                    placement="top"
-                    label={
-                      `${t("usersTable.status")}: ` +
-                      (field.value !== "disabled" ? t("active") : t("disabled"))
-                    }
-                    textTransform="capitalize"
-                  >
-                    <Box mt="6">
-                      <Switch
-                        colorScheme="primary"
-                        isChecked={field.value !== "disabled"}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            field.onChange("connecting");
-                          } else {
-                            field.onChange("disabled");
+                  <Tooltip key={field.value}>
+                    <TooltipTrigger asChild>
+                      <div className="mt-6">
+                        <Switch
+                          checked={field.value !== "disabled"}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              field.onChange("connecting");
+                            } else {
+                              field.onChange("disabled");
+                            }
+                          }}
+                          aria-label={
+                            `${t("usersTable.status")}: ` +
+                            (field.value !== "disabled"
+                              ? t("active")
+                              : t("disabled"))
                           }
-                        }}
-                      />
-                    </Box>
+                        />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="capitalize">
+                      {`${t("usersTable.status")}: ` +
+                        (field.value !== "disabled"
+                          ? t("active")
+                          : t("disabled"))}
+                    </TooltipContent>
                   </Tooltip>
                 );
               }}
             />
-          </HStack>
-        </HStack>
-        <HStack alignItems="flex-start" w="100%">
-          <Box w="100%">
-            <CustomInput
+          </div>
+        </div>
+        <div className="flex w-full flex-row items-start">
+          <div className="w-full">
+            <Input
               label={t("nodes.nodeAddress")}
-              size="sm"
               placeholder="51.20.12.13"
               {...form.register("address")}
               error={form.formState?.errors?.address?.message}
             />
-          </Box>
-        </HStack>
-        <HStack alignItems="flex-start" w="100%">
-        <Box>
-            <CustomInput
+          </div>
+        </div>
+        <div className="flex w-full flex-row items-start gap-2">
+          <div>
+            <Input
               label={t("nodes.nodePort")}
-              size="sm"
               placeholder="62050"
               {...form.register("port")}
               error={form.formState?.errors?.port?.message}
             />
-          </Box>
-          <Box>
-            <CustomInput
+          </div>
+          <div>
+            <Input
               label={t("nodes.nodeAPIPort")}
-              size="sm"
               placeholder="62051"
               {...form.register("api_port")}
               error={form.formState?.errors?.api_port?.message}
             />
-          </Box>
-          <Box>
-            <CustomInput
+          </div>
+          <div>
+            <Input
               label={t("nodes.usageCoefficient")}
-              size="sm"
               placeholder="1"
               {...form.register("usage_coefficient")}
               error={form.formState?.errors?.usage_coefficient?.message}
             />
-          </Box>
-        </HStack>
+          </div>
+        </div>
         {addAsHost && (
-          <FormControl py={1}>
-            <Checkbox {...form.register("add_as_new_host")}>
-              <FormLabel m={0}>{t("nodes.addHostForEveryInbound")}</FormLabel>
-            </Checkbox>
-          </FormControl>
+          <Controller
+            name="add_as_new_host"
+            control={form.control}
+            render={({ field }) => (
+              <div className="flex items-center gap-2 py-1">
+                <Checkbox
+                  id="add_as_new_host"
+                  checked={!!field.value}
+                  onCheckedChange={(v) => field.onChange(v === true)}
+                />
+                <Label htmlFor="add_as_new_host" className="m-0 font-normal">
+                  {t("nodes.addHostForEveryInbound")}
+                </Label>
+              </div>
+            )}
+          />
         )}
-        <HStack w="full">
+        <div className="flex w-full flex-row items-center gap-2">
           {btnLeftAdornment}
           <Button
-            flexGrow={1}
+            className="w-full flex-1 px-5"
             type="submit"
-            colorScheme="primary"
             size="sm"
-            px={5}
-            w="full"
-            isLoading={isLoading}
+            disabled={isLoading}
             {...btnProps}
           >
+            {isLoading && (
+              <svg
+                className="mr-2 h-4 w-4 animate-spin"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+            )}
             {submitBtnText}
           </Button>
-        </HStack>
-      </VStack>
+        </div>
+      </div>
     </form>
   );
 };
@@ -548,58 +497,59 @@ export const NodesDialog: FC = () => {
     onEditingNodes(false);
   };
 
-  const toggleAccordion = (index: number | string) => {
-    if (openAccordions[String(index)]) {
-      delete openAccordions[String(index)];
-    } else openAccordions[String(index)] = {};
-
-    setOpenAccordions({ ...openAccordions });
-  };
-
   return (
     <>
-      <Modal isOpen={isEditingNodes} onClose={onClose}>
-        <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-        <ModalContent mx="3" w="fit-content" maxW="3xl">
-          <ModalHeader pt={6}>
+      <Dialog
+        open={isEditingNodes}
+        onOpenChange={(open) => {
+          if (!open) onClose();
+        }}
+      >
+        <DialogContent className="max-w-3xl w-fit">
+          <DialogHeader className="pt-0">
+            <DialogTitle className="sr-only">{t("nodes.title")}</DialogTitle>
             <Icon color="primary">
-              <ModalIcon color="white" />
+              <SquaresPlusIcon className="h-5 w-5 text-white" />
             </Icon>
-          </ModalHeader>
-          <ModalCloseButton mt={3} />
-          <ModalBody w="440px" pb={6} pt={3}>
-            <Text mb={3} opacity={0.8} fontSize="sm">
-              {t("nodes.title")}
-            </Text>
+          </DialogHeader>
+          <div className="w-[440px] max-w-full pb-0 pt-1">
+            <p className="mb-3 text-sm opacity-80">{t("nodes.title")}</p>
             {isLoading && "loading..."}
 
             <Accordion
-              w="full"
-              allowToggle
-              index={Object.keys(openAccordions).map((i) => parseInt(i))}
+              type="multiple"
+              className="w-full"
+              value={Object.keys(openAccordions)}
+              onValueChange={(vals) => {
+                const next: Record<string, object> = {};
+                vals.forEach((v) => {
+                  next[v] = {};
+                });
+                setOpenAccordions(next);
+              }}
             >
-              <VStack w="full">
+              <div className="flex w-full flex-col gap-4">
                 {!isLoading &&
                   nodes &&
                   nodes.map((node, index) => {
                     return (
                       <NodeAccordion
-                        toggleAccordion={() => toggleAccordion(index)}
                         key={node.name}
+                        value={String(index)}
                         node={node}
                       />
                     );
                   })}
 
                 <AddNodeForm
-                  toggleAccordion={() => toggleAccordion((nodes || []).length)}
+                  value={String((nodes || []).length)}
                   resetAccordions={() => setOpenAccordions({})}
                 />
-              </VStack>
+              </div>
             </Accordion>
-          </ModalBody>
-        </ModalContent>
-      </Modal>
+          </div>
+        </DialogContent>
+      </Dialog>
       <DeleteNodeModal deleteCallback={() => setOpenAccordions({})} />
     </>
   );

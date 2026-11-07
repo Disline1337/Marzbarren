@@ -3,7 +3,7 @@ import re
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 HappDefaultAction = Literal["proxy", "direct"]
 MihomoAction = Literal["proxy", "direct", "block"]
@@ -130,6 +130,22 @@ def _normalize_ip(value: str, host_prefix: bool) -> str:
     return str(ipaddress.ip_network((address, address.max_prefixlen), strict=False))
 
 
+def _is_happ_ip_entry(value: str) -> bool:
+    item = value.strip()
+    if not item:
+        return False
+    if _geo_entry(item, "geoip") is not None:
+        return True
+    try:
+        if "/" in item:
+            ipaddress.ip_network(item, strict=False)
+        else:
+            ipaddress.ip_address(item)
+    except ValueError:
+        return False
+    return True
+
+
 def normalize_happ_ip(value: str) -> str:
     item = value.strip()
     if not item:
@@ -188,7 +204,16 @@ class HappRoutingProfile(BaseModel):
     @field_validator("direct_sites", "proxy_sites", "block_sites")
     @classmethod
     def validate_sites(cls, value: list[str]) -> list[str]:
-        return dedupe([normalize_happ_site(item) for item in value])
+        normalized = []
+        for item in value:
+            raw = item.strip()
+            if not raw:
+                continue
+            if _is_happ_ip_entry(raw):
+                normalized.append(raw)
+            else:
+                normalized.append(normalize_happ_site(raw))
+        return dedupe(normalized)
 
     @field_validator("direct_ips", "proxy_ips", "block_ips")
     @classmethod
@@ -220,6 +245,25 @@ class HappRoutingProfile(BaseModel):
         _reject_overlap(value, info.data.get("direct_ips", []))
         _reject_overlap(value, info.data.get("proxy_ips", []))
         return value
+
+    @model_validator(mode="after")
+    def move_ips_out_of_site_lists(self):
+        for action in ("direct", "proxy", "block"):
+            sites_name = f"{action}_sites"
+            ips_name = f"{action}_ips"
+            kept_sites = []
+            ips = list(getattr(self, ips_name))
+            for item in getattr(self, sites_name):
+                if _is_happ_ip_entry(item):
+                    ips.append(normalize_happ_ip(item))
+                else:
+                    kept_sites.append(item)
+            setattr(self, sites_name, kept_sites)
+            setattr(self, ips_name, dedupe(ips))
+        _reject_overlap(self.proxy_ips, self.direct_ips)
+        _reject_overlap(self.block_ips, self.direct_ips)
+        _reject_overlap(self.block_ips, self.proxy_ips)
+        return self
 
 
 class MihomoRoutingRule(BaseModel):

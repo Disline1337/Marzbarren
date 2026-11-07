@@ -1,16 +1,3 @@
-import {
-  Alert,
-  AlertDescription,
-  AlertIcon,
-  Box,
-  Button,
-  chakra,
-  FormControl,
-  FormLabel,
-  HStack,
-  Text,
-  VStack,
-} from "@chakra-ui/react";
 import { ArrowRightOnRectangleIcon } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { FC, useEffect, useState } from "react";
@@ -19,6 +6,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { Footer } from "components/Footer";
 import { Input } from "components/Input";
+import { Button } from "components/ui/button";
 import { fetch } from "service/http";
 import { removeAuthToken, setAuthToken } from "utils/authStorage";
 import { ReactComponent as Logo } from "assets/logo.svg";
@@ -30,21 +18,9 @@ const schema = z.object({
   password: z.string().min(1, "login.fieldRequired"),
 });
 
-export const LogoIcon = chakra(Logo, {
-  baseStyle: {
-    strokeWidth: "10px",
-    w: 12,
-    h: 12,
-  },
-});
-
-const LoginIcon = chakra(ArrowRightOnRectangleIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-    strokeWidth: "2px",
-  },
-});
+export const LogoIcon = () => (
+  <Logo className="h-12 w-12" style={{ strokeWidth: "10px" }} />
+);
 
 export const Login: FC = () => {
   const [error, setError] = useState("");
@@ -83,65 +59,76 @@ export const Login: FC = () => {
       .finally(setLoading.bind(null, false));
   };
   return (
-    <VStack justifyContent="space-between" minH="100vh" p="6" w="full">
-      <Box w="full">
-        <HStack justifyContent="end" w="full">
+    <div className="flex min-h-screen w-full flex-col justify-between p-6">
+      <div className="w-full">
+        <div className="flex w-full justify-end">
           <Language />
-        </HStack>
-        <HStack w="full" justifyContent="center" alignItems="center">
-          <Box w="full" maxW="340px" mt="6">
-            <VStack alignItems="center" w="full">
+        </div>
+        <div className="flex w-full items-center justify-center">
+          <div className="mt-6 w-full max-w-[340px]">
+            <div className="flex w-full flex-col items-center gap-2">
               <LogoIcon />
-              <Text fontSize="2xl" fontWeight="semibold">
+              <p className="text-2xl font-semibold">
                 {t("login.loginYourAccount")}
-              </Text>
-              <Text color="gray.600" _dark={{ color: "gray.400" }}>
-                {t("login.welcomeBack")}
-              </Text>
-            </VStack>
-            <Box w="full" maxW="300px" m="auto" pt="4">
+              </p>
+              <p className="text-muted-foreground">{t("login.welcomeBack")}</p>
+            </div>
+            <div className="m-auto w-full max-w-[300px] pt-4">
               <form onSubmit={handleSubmit(login)}>
-                <VStack mt={4} rowGap={2}>
-                  <FormControl>
-                    <Input
-                      w="full"
-                      placeholder={t("username")}
-                      {...register("username")}
-                      error={t(errors?.username?.message as string)}
-                    />
-                  </FormControl>
-                  <FormControl>
-                    <Input
-                      w="full"
-                      type="password"
-                      placeholder={t("password")}
-                      {...register("password")}
-                      error={t(errors?.password?.message as string)}
-                    />
-                  </FormControl>
+                <div className="mt-4 flex flex-col gap-2">
+                  <Input
+                    placeholder={t("username")}
+                    {...register("username")}
+                    error={t(errors?.username?.message as string)}
+                  />
+                  <Input
+                    type="password"
+                    placeholder={t("password")}
+                    {...register("password")}
+                    error={t(errors?.password?.message as string)}
+                  />
                   {error && (
-                    <Alert status="error" rounded="md">
-                      <AlertIcon />
-                      <AlertDescription>{error}</AlertDescription>
-                    </Alert>
+                    <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      {error}
+                    </div>
                   )}
                   <Button
-                    isLoading={loading}
+                    disabled={loading}
                     type="submit"
-                    w="full"
-                    colorScheme="primary"
+                    className="w-full"
                   >
-                    {<LoginIcon marginRight={1} />}
+                    {loading && (
+                      <svg
+                        className="mr-2 h-4 w-4 animate-spin"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                      >
+                        <circle
+                          className="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          strokeWidth="4"
+                        />
+                        <path
+                          className="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                        />
+                      </svg>
+                    )}
+                    <ArrowRightOnRectangleIcon className="mr-1 h-4 w-4" />
                     {t("login")}
                   </Button>
-                </VStack>
+                </div>
               </form>
-            </Box>
-          </Box>
-        </HStack>
-      </Box>
+            </div>
+          </div>
+        </div>
+      </div>
       <Footer />
-    </VStack>
+    </div>
   );
 };
 

@@ -1,33 +1,19 @@
 import {
-  Box,
-  Button,
-  ButtonGroup,
-  chakra,
-  HStack,
-  Select,
-  Text,
-} from "@chakra-ui/react";
-import {
   ArrowLongLeftIcon,
   ArrowLongRightIcon,
 } from "@heroicons/react/24/outline";
+import { Button } from "components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "components/ui/select";
 import { useDashboard } from "contexts/DashboardContext";
-import { ChangeEvent, FC } from "react";
+import { FC } from "react";
 import { useTranslation } from "react-i18next";
 import { setUsersPerPageLimitSize } from "utils/userPreferenceStorage";
-
-const PrevIcon = chakra(ArrowLongLeftIcon, {
-  baseStyle: {
-    w: 4,
-    h: 4,
-  },
-});
-const NextIcon = chakra(ArrowLongRightIcon, {
-  baseStyle: {
-    w: 4,
-    h: 4,
-  },
-});
 
 export type PaginationType = {
   count: number;
@@ -94,75 +80,83 @@ export const Pagination: FC = () => {
     });
   };
 
-  const handlePageSizeChange = (e: ChangeEvent<HTMLSelectElement>) => {
+  const handlePageSizeChange = (value: string) => {
     onFilterChange({
       ...filters,
-      limit: parseInt(e.target.value),
+      limit: parseInt(value),
     });
-    setUsersPerPageLimitSize(e.target.value);
+    setUsersPerPageLimitSize(value);
   };
 
   const { t } = useTranslation();
 
   return (
-    <HStack
-      justifyContent="space-between"
-      mt={4}
-      w="full"
-      display="flex"
-      columnGap={{ lg: 4, md: 0 }}
-      rowGap={{ md: 0, base: 4 }}
-      flexDirection={{ md: "row", base: "column" }}
-    >
-      <Box order={{ base: 2, md: 1 }}>
-        <HStack>
+    <div className="mt-4 flex w-full flex-col items-center justify-between gap-4 md:flex-row md:gap-0">
+      <div className="order-2 md:order-1">
+        <div className="flex flex-row items-center gap-2">
           <Select
-            minW="60px"
-            value={perPage}
-            onChange={handlePageSizeChange}
-            size="sm"
-            rounded="md"
+            value={String(perPage)}
+            onValueChange={handlePageSizeChange}
           >
-            <option>10</option>
-            <option>20</option>
-            <option>30</option>
+            <SelectTrigger className="h-8 min-w-[60px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="10">10</SelectItem>
+              <SelectItem value="20">20</SelectItem>
+              <SelectItem value="30">30</SelectItem>
+            </SelectContent>
           </Select>
-          <Text whiteSpace={"nowrap"} fontSize="sm">
-            {t("itemsPerPage")}
-          </Text>
-        </HStack>
-      </Box>
+          <span className="whitespace-nowrap text-sm">{t("itemsPerPage")}</span>
+        </div>
+      </div>
 
-      <ButtonGroup size="sm" isAttached variant="outline" order={{ base: 1, md: 2 }}>
+      <div className="order-1 flex md:order-2">
         <Button
-          leftIcon={<PrevIcon />}
+          size="sm"
+          variant="outline"
+          className="rounded-r-none"
           onClick={changePage.bind(null, page - 1)}
-          isDisabled={page === 0 || noPages === 0}
+          disabled={page === 0 || noPages === 0}
         >
+          <ArrowLongLeftIcon className="mr-1 h-4 w-4" />
           {t("previous")}
         </Button>
         {pages.map((pageIndex) => {
           if (typeof pageIndex === "string")
-            return <Button key={pageIndex}>...</Button>;
+            return (
+              <Button
+                key={pageIndex}
+                size="sm"
+                variant="outline"
+                className="rounded-none"
+              >
+                ...
+              </Button>
+            );
           return (
             <Button
               key={pageIndex}
-              variant={(pageIndex as number) === page ? "solid" : "outline"}
+              size="sm"
+              className="rounded-none"
+              variant={(pageIndex as number) === page ? "default" : "outline"}
               onClick={changePage.bind(null, pageIndex)}
             >
               {(pageIndex as number) + 1}
             </Button>
           );
         })}
-
         <Button
-          rightIcon={<NextIcon />}
+          size="sm"
+          variant="outline"
+          className="rounded-l-none"
           onClick={changePage.bind(null, page + 1)}
-          isDisabled={page + 1 === noPages || noPages === 0}
+          disabled={page + 1 === noPages || noPages === 0}
         >
           {t("next")}
+          <ArrowLongRightIcon className="ml-1 h-4 w-4" />
         </Button>
-      </ButtonGroup>
-    </HStack>
+      </div>
+    </div>
   );
 };

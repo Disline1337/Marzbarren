@@ -1,35 +1,28 @@
 import {
-  Alert,
-  AlertIcon,
-  Box,
-  Button,
-  chakra,
-  FormControl,
-  FormHelperText,
-  FormLabel,
-  HStack,
-  Input,
-  Modal,
-  ModalBody,
-  ModalCloseButton,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  ModalOverlay,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  MapIcon,
+} from "@heroicons/react/24/outline";
+import { Input } from "components/Input";
+import { Textarea } from "components/Textarea";
+import { Button } from "components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "components/ui/dialog";
+import { Label } from "components/ui/label";
+import {
   Select,
-  Spinner,
-  Switch,
-  Tab,
-  TabList,
-  TabPanel,
-  TabPanels,
-  Tabs,
-  Text,
-  Textarea,
-  useToast,
-  VStack,
-} from "@chakra-ui/react";
-import { MapIcon } from "@heroicons/react/24/outline";
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "components/ui/select";
+import { Switch } from "components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/ui/tabs";
 import { useClientRouting } from "contexts/ClientRoutingContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { FC, useEffect, useState } from "react";
@@ -55,7 +48,6 @@ import {
 } from "utils/toastHandler";
 import { Icon } from "./Icon";
 
-const RoutingIcon = chakra(MapIcon, { baseStyle: { w: 5, h: 5 } });
 const RULE_TYPES: MihomoRuleType[] = [
   "domain",
   "domain_suffix",
@@ -107,6 +99,8 @@ type HappListName =
   | "happ.proxy_ips"
   | "happ.block_sites"
   | "happ.block_ips";
+
+type DetailItem = { loc?: unknown; msg?: unknown };
 
 const emptyForm: FormValues = {
   happ: {
@@ -189,13 +183,28 @@ const toUpdate = (values: FormValues): ClientRoutingUpdate => ({
   },
 });
 
-const validationMessages = (error: any): string[] => {
-  const detail = error?.response?._data?.detail ?? error?.data?.detail;
+const readDetail = (error: unknown): unknown => {
+  if (!error || typeof error !== "object") return undefined;
+  const response = "response" in error ? error.response : undefined;
+  if (response && typeof response === "object" && "_data" in response) {
+    const data = response._data;
+    if (data && typeof data === "object" && "detail" in data) return data.detail;
+  }
+  if ("data" in error) {
+    const data = error.data;
+    if (data && typeof data === "object" && "detail" in data) return data.detail;
+  }
+  return undefined;
+};
+
+const validationMessages = (error: unknown): string[] => {
+  const detail = readDetail(error);
   if (typeof detail === "string") return [detail];
   if (Array.isArray(detail)) {
     return detail.map((item) => {
-      const path = Array.isArray(item?.loc) ? item.loc.join(".") : "";
-      return path ? `${path}: ${item?.msg}` : String(item?.msg || item);
+      const entry = item as DetailItem;
+      const path = Array.isArray(entry?.loc) ? entry.loc.join(".") : "";
+      return path ? `${path}: ${entry?.msg}` : String(entry?.msg || item);
     });
   }
   if (detail && typeof detail === "object") {
@@ -206,6 +215,30 @@ const validationMessages = (error: any): string[] => {
   return [];
 };
 
+const Spinner = () => (
+  <svg
+    className="h-4 w-4 animate-spin"
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    aria-hidden
+  >
+    <circle
+      className="opacity-25"
+      cx="12"
+      cy="12"
+      r="10"
+      stroke="currentColor"
+      strokeWidth="4"
+    />
+    <path
+      className="opacity-75"
+      fill="currentColor"
+      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+    />
+  </svg>
+);
+
 const EnabledSwitch: FC<{
   form: RoutingForm;
   name: "happ.enabled" | "mihomo.enabled";
@@ -215,11 +248,34 @@ const EnabledSwitch: FC<{
     control={form.control}
     render={({ field }) => (
       <Switch
-        isChecked={field.value}
-        onChange={(event) => field.onChange(event.target.checked)}
+        checked={field.value}
+        onCheckedChange={(checked) => field.onChange(checked)}
       />
     )}
   />
+);
+
+const FieldSelect: FC<{
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+}> = ({ label, value, onChange, options }) => (
+  <div className="w-full">
+    <Label className="mb-2 block">{label}</Label>
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  </div>
 );
 
 export const ClientRoutingDialog: FC = () => {
@@ -227,7 +283,6 @@ export const ClientRoutingDialog: FC = () => {
   const { settings, isPostLoading, fetchSettings, saveSettings } =
     useClientRouting();
   const { t } = useTranslation();
-  const toast = useToast();
   const [ready, setReady] = useState(false);
   const [fetchError, setFetchError] = useState<unknown>(null);
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -279,127 +334,129 @@ export const ClientRoutingDialog: FC = () => {
     setValidationErrors([]);
     try {
       await saveSettings(toUpdate(values));
-      generateSuccessMessage(t("clientRouting.saved"), toast);
+      generateSuccessMessage(t("clientRouting.saved"));
       useDashboard.setState({ isEditingClientRouting: false });
     } catch (error) {
       const messages = validationMessages(error);
       setValidationErrors(messages);
-      generateErrorMessage(error, toast);
+      generateErrorMessage(error);
     }
   });
 
   const canSave = ready && !fetchError && !isPostLoading;
   return (
-    <Modal
-      isOpen={isEditingClientRouting}
-      onClose={close}
-      size="3xl"
-      closeOnOverlayClick={!isPostLoading}
-      closeOnEsc={!isPostLoading}
+    <Dialog
+      open={isEditingClientRouting}
+      onOpenChange={(open) => {
+        if (!open) close();
+      }}
     >
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-      <ModalContent mx="3" w="full">
-        <ModalHeader pt={6}>
-          <HStack gap={2}>
+      <DialogContent
+        className="max-w-4xl"
+        onPointerDownOutside={(event) => {
+          if (isPostLoading) event.preventDefault();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (isPostLoading) event.preventDefault();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle className="flex flex-row items-center gap-2 pr-6">
             <Icon color="primary">
-              <RoutingIcon color="white" />
+              <MapIcon className="h-5 w-5 text-white" />
             </Icon>
-            <Text fontWeight="semibold" fontSize="lg">
-              {t("clientRouting.title")}
-            </Text>
-          </HStack>
-        </ModalHeader>
-        <ModalCloseButton mt={3} isDisabled={isPostLoading} />
+            {t("clientRouting.title")}
+          </DialogTitle>
+        </DialogHeader>
         <form onSubmit={onSubmit}>
-          <ModalBody maxH="70vh" overflowY="auto">
+          <div className="max-h-[70vh] overflow-y-auto">
             {!ready && !fetchError && (
-              <HStack py={8} justify="center">
+              <div className="flex flex-row items-center justify-center gap-2 py-8">
                 <Spinner />
-                <Text>{t("clientRouting.loading")}</Text>
-              </HStack>
+                <p>{t("clientRouting.loading")}</p>
+              </div>
             )}
             {!!fetchError && (
-              <Alert status="error" borderRadius="md">
-                <AlertIcon />
-                <Box flex="1">
-                  <Text>{t("clientRouting.loadError")}</Text>
-                  <Button mt={3} size="sm" onClick={retry} type="button">
+              <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-destructive">
+                <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0" />
+                <div className="flex-1">
+                  <p>{t("clientRouting.loadError")}</p>
+                  <Button
+                    className="mt-3"
+                    size="sm"
+                    onClick={retry}
+                    type="button"
+                  >
                     {t("clientRouting.retry")}
                   </Button>
-                </Box>
-              </Alert>
+                </div>
+              </div>
             )}
             {ready && !fetchError && (
-              <VStack align="stretch" spacing={4}>
-                <Alert status="info" borderRadius="md" alignItems="start">
-                  <AlertIcon />
-                  <Box>
-                    <Text fontSize="sm">{t("clientRouting.hint.effect")}</Text>
-                    <Text fontSize="sm" mt={1}>
-                      {t("clientRouting.hint.geo")}
-                    </Text>
-                  </Box>
-                </Alert>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-start gap-2 rounded-md border border-primary/40 bg-primary/10 p-3">
+                  <InformationCircleIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <div>
+                    <p className="text-sm">{t("clientRouting.hint.effect")}</p>
+                    <p className="mt-1 text-sm">{t("clientRouting.hint.geo")}</p>
+                  </div>
+                </div>
                 <fieldset
                   disabled={isPostLoading}
                   style={{ border: 0, padding: 0, margin: 0 }}
                 >
-                  <Tabs isFitted variant="enclosed" colorScheme="primary">
-                    <TabList overflowX="auto">
-                      <Tab>{t("clientRouting.happTab")}</Tab>
-                      <Tab>{t("clientRouting.mihomoTab")}</Tab>
-                    </TabList>
-                    <TabPanels>
-                      <TabPanel px={{ base: 0, md: 4 }}>
-                        <HappFields form={form} />
-                      </TabPanel>
-                      <TabPanel px={{ base: 0, md: 4 }}>
-                        <MihomoFields form={form} rules={rules} />
-                      </TabPanel>
-                    </TabPanels>
+                  <Tabs defaultValue="happ">
+                    <TabsList className="w-full overflow-x-auto">
+                      <TabsTrigger className="flex-1" value="happ">
+                        {t("clientRouting.happTab")}
+                      </TabsTrigger>
+                      <TabsTrigger className="flex-1" value="mihomo">
+                        {t("clientRouting.mihomoTab")}
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="happ" className="px-0 md:px-4">
+                      <HappFields form={form} />
+                    </TabsContent>
+                    <TabsContent value="mihomo" className="px-0 md:px-4">
+                      <MihomoFields form={form} rules={rules} />
+                    </TabsContent>
                   </Tabs>
                 </fieldset>
                 {validationErrors.length > 0 && (
-                  <Alert status="error" borderRadius="md" alignItems="start">
-                    <AlertIcon />
-                    <Box>
-                      <Text fontWeight="semibold">
+                  <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-destructive">
+                    <ExclamationTriangleIcon className="mt-0.5 h-5 w-5 shrink-0" />
+                    <div>
+                      <p className="font-semibold">
                         {t("clientRouting.validationErrors")}
-                      </Text>
+                      </p>
                       {validationErrors.map((message, index) => (
-                        <Text key={`${index}-${message}`} fontSize="sm">
+                        <p key={`${index}-${message}`} className="text-sm">
                           {message}
-                        </Text>
+                        </p>
                       ))}
-                    </Box>
-                  </Alert>
+                    </div>
+                  </div>
                 )}
-              </VStack>
+              </div>
             )}
-          </ModalBody>
-          <ModalFooter>
+          </div>
+          <DialogFooter className="mt-4">
             <Button
               type="button"
               variant="outline"
-              mr={3}
               onClick={close}
-              isDisabled={isPostLoading}
+              disabled={isPostLoading}
             >
               {t("clientRouting.cancel")}
             </Button>
-            <Button
-              type="submit"
-              colorScheme="primary"
-              isLoading={isPostLoading}
-              loadingText={t("clientRouting.saving")}
-              isDisabled={!canSave}
-            >
+            <Button type="submit" disabled={!canSave}>
+              {isPostLoading && <Spinner />}
               {t("clientRouting.save")}
             </Button>
-          </ModalFooter>
+          </DialogFooter>
         </form>
-      </ModalContent>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -407,46 +464,62 @@ const HappFields: FC<{ form: RoutingForm }> = ({ form }) => {
   const { t } = useTranslation();
   const sections = ["direct", "proxy", "block"] as const;
   return (
-    <VStack align="stretch" spacing={4}>
-      <Text fontSize="sm">{t("clientRouting.hint.happJson")}</Text>
-      <FormControl display="flex" alignItems="center">
-        <FormLabel mb={0}>{t("clientRouting.enabled")}</FormLabel>
+    <div className="flex flex-col gap-4">
+      <p className="text-sm">{t("clientRouting.hint.happJson")}</p>
+      <div className="flex items-center gap-2">
+        <span>{t("clientRouting.enabled")}</span>
         <EnabledSwitch form={form} name="happ.enabled" />
-      </FormControl>
-      <HStack align="start" flexDir={{ base: "column", md: "row" }}>
-        <FormControl>
-          <FormLabel>{t("clientRouting.defaultAction")}</FormLabel>
-          <Select {...form.register("happ.default_action")}>
-            {HAPP_ACTIONS.map((action) => (
-              <option key={action} value={action}>
-                {t(`clientRouting.action.${action}`)}
-              </option>
-            ))}
-          </Select>
-          <FormHelperText>{t("clientRouting.defaultActionHint")}</FormHelperText>
-        </FormControl>
-        <FormControl>
-          <FormLabel>{t("clientRouting.domainStrategy")}</FormLabel>
-          <Select {...form.register("happ.domain_strategy")}>
-            {DOMAIN_STRATEGIES.map((strategy) => (
-              <option key={strategy} value={strategy}>
-                {strategy}
-              </option>
-            ))}
-          </Select>
-        </FormControl>
-      </HStack>
+      </div>
+      <div className="flex flex-col items-start gap-4 md:flex-row">
+        <div className="w-full">
+          <Controller
+            control={form.control}
+            name="happ.default_action"
+            render={({ field }) => (
+              <FieldSelect
+                label={t("clientRouting.defaultAction")}
+                value={field.value}
+                onChange={field.onChange}
+                options={HAPP_ACTIONS.map((action) => ({
+                  value: action,
+                  label: t(`clientRouting.action.${action}`),
+                }))}
+              />
+            )}
+          />
+          <p className="mt-1 text-sm text-muted-foreground">
+            {t("clientRouting.defaultActionHint")}
+          </p>
+        </div>
+        <Controller
+          control={form.control}
+          name="happ.domain_strategy"
+          render={({ field }) => (
+            <FieldSelect
+              label={t("clientRouting.domainStrategy")}
+              value={field.value}
+              onChange={field.onChange}
+              options={DOMAIN_STRATEGIES.map((strategy) => ({
+                value: strategy,
+                label: strategy,
+              }))}
+            />
+          )}
+        />
+      </div>
       <UrlFields
         geoipName="happ.geoip_url"
         geositeName="happ.geosite_url"
         form={form}
       />
       {sections.map((section) => (
-        <Box key={section}>
-          <Text fontWeight="semibold">{t(`clientRouting.section.${section}`)}</Text>
-          <Text fontSize="sm" color="gray.500" mb={2}>
+        <div key={section}>
+          <p className="font-semibold">
+            {t(`clientRouting.section.${section}`)}
+          </p>
+          <p className="mb-2 text-sm text-muted-foreground">
             {t(`clientRouting.section.${section}Help`)}
-          </Text>
+          </p>
           <ListField
             label={t("clientRouting.sites")}
             example={t("clientRouting.sitesExample")}
@@ -457,12 +530,13 @@ const HappFields: FC<{ form: RoutingForm }> = ({ form }) => {
           <ListField
             label={t("clientRouting.ips")}
             example={t("clientRouting.ipsExample")}
+            hint={t("clientRouting.happIpsHint")}
             name={`happ.${section}_ips`}
             form={form}
           />
-        </Box>
+        </div>
       ))}
-    </VStack>
+    </div>
   );
 };
 
@@ -472,111 +546,128 @@ const MihomoFields: FC<{ form: RoutingForm; rules: RoutingRules }> = ({
 }) => {
   const { t } = useTranslation();
   return (
-    <VStack align="stretch" spacing={4}>
-      <Text fontSize="sm">{t("clientRouting.hint.mihomo")}</Text>
-      <FormControl display="flex" alignItems="center">
-        <FormLabel mb={0}>{t("clientRouting.enabled")}</FormLabel>
+    <div className="flex flex-col gap-4">
+      <p className="text-sm">{t("clientRouting.hint.mihomo")}</p>
+      <div className="flex items-center gap-2">
+        <span>{t("clientRouting.enabled")}</span>
         <EnabledSwitch form={form} name="mihomo.enabled" />
-      </FormControl>
-      <FormControl>
-        <FormLabel>{t("clientRouting.defaultAction")}</FormLabel>
-        <Select {...form.register("mihomo.default_action")}>
-          {RULE_ACTIONS.map((action) => (
-            <option key={action} value={action}>
-              {t(`clientRouting.action.${action}`)}
-            </option>
-          ))}
-        </Select>
-        <FormHelperText>
+      </div>
+      <div>
+        <Controller
+          control={form.control}
+          name="mihomo.default_action"
+          render={({ field }) => (
+            <FieldSelect
+              label={t("clientRouting.defaultAction")}
+              value={field.value}
+              onChange={field.onChange}
+              options={RULE_ACTIONS.map((action) => ({
+                value: action,
+                label: t(`clientRouting.action.${action}`),
+              }))}
+            />
+          )}
+        />
+        <p className="mt-1 text-sm text-muted-foreground">
           {t("clientRouting.defaultActionHint")} {t("clientRouting.matchHint")}
-        </FormHelperText>
-      </FormControl>
+        </p>
+      </div>
       <UrlFields
         geoipName="mihomo.geoip_url"
         geositeName="mihomo.geosite_url"
         form={form}
       />
-      <Text fontWeight="semibold">{t("clientRouting.rules")}</Text>
-      <Text fontSize="sm" color="gray.500">
+      <p className="font-semibold">{t("clientRouting.rules")}</p>
+      <p className="text-sm text-muted-foreground">
         {t("clientRouting.suffixHint")}
-      </Text>
+      </p>
       {rules.fields.map((field, index) => (
-        <HStack
+        <div
           key={field.id}
-          align="end"
-          flexDir={{ base: "column", md: "row" }}
+          className="flex flex-col items-end gap-2 md:flex-row"
         >
-          <FormControl>
-            <FormLabel>{t("clientRouting.ruleType")}</FormLabel>
-            <Select {...form.register(`mihomo.rules.${index}.type`)}>
-              {RULE_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {t(`clientRouting.type.${type}`)}
-                </option>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl>
-            <FormLabel>{t("clientRouting.ruleValue")}</FormLabel>
-            <Input
-              placeholder={t(
-                `clientRouting.rulePlaceholder.${form.watch(
-                  `mihomo.rules.${index}.type`
-                )}`
-              )}
-              {...form.register(`mihomo.rules.${index}.value`)}
-            />
-          </FormControl>
-          <FormControl>
-            <FormLabel>{t("clientRouting.ruleAction")}</FormLabel>
-            <Select {...form.register(`mihomo.rules.${index}.action`)}>
-              {RULE_ACTIONS.map((action) => (
-                <option key={action} value={action}>
-                  {t(`clientRouting.action.${action}`)}
-                </option>
-              ))}
-            </Select>
-          </FormControl>
-          <HStack>
+          <Controller
+            control={form.control}
+            name={`mihomo.rules.${index}.type`}
+            render={({ field: typeField }) => (
+              <FieldSelect
+                label={t("clientRouting.ruleType")}
+                value={typeField.value}
+                onChange={typeField.onChange}
+                options={RULE_TYPES.map((type) => ({
+                  value: type,
+                  label: t(`clientRouting.type.${type}`),
+                }))}
+              />
+            )}
+          />
+          <Input
+            className="w-full"
+            label={t("clientRouting.ruleValue")}
+            placeholder={t(
+              `clientRouting.rulePlaceholder.${form.watch(
+                `mihomo.rules.${index}.type`
+              )}`
+            )}
+            {...form.register(`mihomo.rules.${index}.value`)}
+          />
+          <Controller
+            control={form.control}
+            name={`mihomo.rules.${index}.action`}
+            render={({ field: actionField }) => (
+              <FieldSelect
+                label={t("clientRouting.ruleAction")}
+                value={actionField.value}
+                onChange={actionField.onChange}
+                options={RULE_ACTIONS.map((action) => ({
+                  value: action,
+                  label: t(`clientRouting.action.${action}`),
+                }))}
+              />
+            )}
+          />
+          <div className="flex flex-row items-center gap-2">
             <Button
               type="button"
               size="sm"
+              variant="secondary"
               onClick={() => rules.move(index, index - 1)}
-              isDisabled={index === 0}
+              disabled={index === 0}
             >
               {t("clientRouting.up")}
             </Button>
             <Button
               type="button"
               size="sm"
+              variant="secondary"
               onClick={() => rules.move(index, index + 1)}
-              isDisabled={index === rules.fields.length - 1}
+              disabled={index === rules.fields.length - 1}
             >
               {t("clientRouting.down")}
             </Button>
             <Button
               type="button"
               size="sm"
-              colorScheme="red"
-              variant="outline"
+              variant="destructive"
               onClick={() => rules.remove(index)}
             >
               {t("clientRouting.delete")}
             </Button>
-          </HStack>
-        </HStack>
+          </div>
+        </div>
       ))}
       <Button
         type="button"
-        alignSelf="start"
+        className="self-start"
         size="sm"
+        variant="secondary"
         onClick={() =>
           rules.append({ type: "domain_suffix", value: "", action: "direct" })
         }
       >
         {t("clientRouting.add")}
       </Button>
-    </VStack>
+    </div>
   );
 };
 
@@ -587,16 +678,16 @@ const UrlFields: FC<{
 }> = ({ form, geoipName, geositeName }) => {
   const { t } = useTranslation();
   return (
-    <VStack align="stretch">
-      <FormControl>
-        <FormLabel>{t("clientRouting.geoipUrl")}</FormLabel>
-        <Input {...form.register(geoipName)} />
-      </FormControl>
-      <FormControl>
-        <FormLabel>{t("clientRouting.geositeUrl")}</FormLabel>
-        <Input {...form.register(geositeName)} />
-      </FormControl>
-    </VStack>
+    <div className="flex flex-col gap-4">
+      <Input
+        label={t("clientRouting.geoipUrl")}
+        {...form.register(geoipName)}
+      />
+      <Input
+        label={t("clientRouting.geositeUrl")}
+        {...form.register(geositeName)}
+      />
+    </div>
   );
 };
 
@@ -609,13 +700,17 @@ const ListField: FC<{
 }> = ({ form, name, label, example, hint }) => {
   const { t } = useTranslation();
   return (
-    <FormControl mb={3}>
-      <FormLabel>{label}</FormLabel>
-      <Textarea rows={4} placeholder={example} {...form.register(name)} />
-      <FormHelperText>
+    <div className="mb-3">
+      <Textarea
+        rows={4}
+        label={label}
+        placeholder={example}
+        {...form.register(name)}
+      />
+      <p className="mt-1 text-sm text-muted-foreground">
         {t("clientRouting.onePerLine")} {example}
         {hint ? ` ${hint}` : ""}
-      </FormHelperText>
-    </FormControl>
+      </p>
+    </div>
   );
 };

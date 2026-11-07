@@ -1,28 +1,28 @@
-import { BoxProps, HStack, Link, Text } from "@chakra-ui/react";
 import { ORGANIZATION_URL, REPO_URL } from "constants/Project";
 import { useDashboard } from "contexts/DashboardContext";
-import { FC } from "react";
+import { cn } from "lib/utils";
+import { FC, HTMLAttributes } from "react";
 
-export const Footer: FC<BoxProps> = (props) => {
+export const Footer: FC<HTMLAttributes<HTMLDivElement>> = ({
+  className,
+  ...props
+}) => {
   const { version } = useDashboard();
   return (
-    <HStack w="full" py="0" position="relative" {...props}>
-      <Text
-        display="inline-block"
-        flexGrow={1}
-        textAlign="center"
-        color="gray.500"
-        fontSize="xs"
-      >
-        <Link color="blue.400" href={REPO_URL}>
+    <div
+      className={cn("relative flex w-full flex-row items-center py-0", className)}
+      {...props}
+    >
+      <p className="inline-block flex-grow text-center text-xs text-muted-foreground">
+        <a className="text-blue-400 hover:underline" href={REPO_URL}>
           Marzban
-        </Link>
+        </a>
         {version ? ` (v${version}), ` : ", "}
         Made with ❤️ in{" "}
-        <Link color="blue.400" href={ORGANIZATION_URL}>
+        <a className="text-blue-400 hover:underline" href={ORGANIZATION_URL}>
           Gozargah
-        </Link>
-      </Text>
-    </HStack>
+        </a>
+      </p>
+    </div>
   );
 };

@@ -1,69 +1,62 @@
-import {
-  Box,
-  ColorMode,
-  HStack,
-  Icon,
-  SimpleGrid,
-  Tab,
-  TabList,
-  TabPanel,
-  TabPanels,
-  Tabs,
-  Text,
-  UseRadioProps,
-  VStack,
-  useBreakpointValue,
-  useColorMode,
-  useDisclosure,
-  useOutsideClick,
-  useRadio,
-  useRadioGroup,
-} from "@chakra-ui/react";
 import { CalendarIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import { ApexOptions } from "apexcharts";
+import {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "components/ui/radio-group";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/ui/tabs";
 import { FilterUsageType } from "contexts/DashboardContext";
 import dayjs, { ManipulateType } from "dayjs";
-import { FC, useRef, useState } from "react";
+import { cn } from "lib/utils";
+import { FC, useEffect, useState } from "react";
 import ReactDatePicker from "react-datepicker";
 import { useTranslation } from "react-i18next";
 import { generateDistinctColors } from "utils/color";
 import { formatBytes } from "utils/formatByte";
 
 type DateType = Date | null;
+type ColorMode = "light" | "dark";
 
-const FilterItem: FC<UseRadioProps & { border?: boolean } & any> = ({
-  border,
-  ...props
-}) => {
-  const { getInputProps, getRadioProps } = useRadio(props);
-  const fontSize = useBreakpointValue({ base: "xs", md: "sm" });
+function useIsMd() {
+  const [isMd, setIsMd] = useState(
+    typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 768px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onChange = () => setIsMd(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return isMd;
+}
+
+const filterOptionTypes = {
+  h: "hour",
+  d: "day",
+  w: "week",
+  m: "month",
+  y: "year",
+};
+
+const FilterItem: FC<{
+  value: string;
+  border?: boolean;
+  selected: boolean;
+}> = ({ value, border, selected }) => {
   return (
-    <Box as="label">
-      <input {...getInputProps()} />
-      <Box
-        {...getRadioProps()}
-        minW="48px"
-        w="full"
-        h="full"
-        textAlign="center"
-        cursor="pointer"
-        fontSize={fontSize}
-        borderWidth={border ? "1px" : "0px"}
-        borderRadius="md"
-        _checked={{
-          bg: "primary.500",
-          color: "white",
-          borderColor: "primary.500",
-        }}
-        _focus={{
-          boxShadow: "outline",
-        }}
-        px={3}
-        py={1}
-      >
-        {props.children}
-      </Box>
-    </Box>
+    <label
+      className={cn(
+        "flex min-w-[48px] flex-1 cursor-pointer items-center justify-center px-3 py-1 text-center text-xs md:text-sm",
+        border && "rounded-md border",
+        selected && "rounded-md border-primary bg-primary text-white"
+      )}
+    >
+      <RadioGroupItem value={value} className="sr-only" />
+      {value}
+    </label>
   );
 };
 
@@ -75,88 +68,59 @@ export type UsageFilterProps = {
 export const UsageFilter: FC<UsageFilterProps> = ({
   onChange,
   defaultValue,
-  ...props
 }) => {
   const { t, i18n } = useTranslation();
-  const { colorMode } = useColorMode();
+  const isMd = useIsMd();
 
-  const filterOptions = useBreakpointValue({
-    base: ["7h", "1d", "3d", "1w"],
-    md: ["7h", "1d", "3d", "1w", "1m", "3m"],
-  })!;
-  const filterOptionTypes = {
-    h: "hour",
-    d: "day",
-    w: "week",
-    m: "month",
-    y: "year",
-  };
-  const customFilterOptions = useBreakpointValue({
-    base: [
-      { title: "hours", options: ["1h", "3h", "6h", "12h"] },
-      { title: "days", options: ["1d", "2d", "3d", "4d"] },
-      { title: "weeks", options: ["1w", "2w", "3w", "4w"] },
-      { title: "months", options: ["1m", "2m", "3m", "6m"] },
-    ],
-    md: [
-      { title: "hours", options: ["1h", "2h", "3h", "6h", "8h", "12h"] },
-      { title: "days", options: ["1d", "2d", "3d", "4d", "5d", "6d"] },
-      { title: "weeks", options: ["1w", "2w", "3w", "4w"] },
-      { title: "months", options: ["1m", "2m", "3m", "6m", "8m"] },
-    ],
-  })!;
-  const {
-    getRootProps,
-    getRadioProps,
-    setValue: setDefaultFilter,
-  } = useRadioGroup({
-    name: "filter",
-    defaultValue: defaultValue,
-    onChange: (value: string) => {
-      if (value === "custom") {
-        return;
-      }
+  const filterOptions = isMd
+    ? ["7h", "1d", "3d", "1w", "1m", "3m"]
+    : ["7h", "1d", "3d", "1w"];
+  const customFilterOptions = isMd
+    ? [
+        { title: "hours", options: ["1h", "2h", "3h", "6h", "8h", "12h"] },
+        { title: "days", options: ["1d", "2d", "3d", "4d", "5d", "6d"] },
+        { title: "weeks", options: ["1w", "2w", "3w", "4w"] },
+        { title: "months", options: ["1m", "2m", "3m", "6m", "8m"] },
+      ]
+    : [
+        { title: "hours", options: ["1h", "3h", "6h", "12h"] },
+        { title: "days", options: ["1d", "2d", "3d", "4d"] },
+        { title: "weeks", options: ["1w", "2w", "3w", "4w"] },
+        { title: "months", options: ["1m", "2m", "3m", "6m"] },
+      ];
 
-      closeCustom();
-
-      if (filterOptions.indexOf(value) >= 0) {
-        setCustomLabel(t("userDialog.custom"));
-        setCustom(false);
-      } else {
-        setCustomLabel(t("userDialog.custom") + ` (${value})`);
-        setCustom(true);
-      }
-
-      const num = Number(value.substring(0, value.length - 1));
-      const unit =
-        filterOptionTypes[
-          value[value.length - 1] as keyof typeof filterOptionTypes
-        ];
-      onChange(value, {
-        start: dayjs()
-          .utc()
-          .subtract(num, unit as ManipulateType)
-          .format("YYYY-MM-DDTHH:00:00"),
-      });
-    },
-  });
-
-  const {
-    isOpen: isCustomOpen,
-    onOpen: openCustom,
-    onClose: closeCustom,
-  } = useDisclosure();
-  const customRef = useRef(null);
-  useOutsideClick({ ref: customRef, handler: closeCustom });
-
+  const [filter, setFilter] = useState(defaultValue);
+  const [isCustomOpen, setCustomOpen] = useState(false);
   const [customLabel, setCustomLabel] = useState(t("userDialog.custom"));
   const [custom, setCustom] = useState(false);
-  const [tabIndex, setTabIndex] = useState(0);
-
-  const monthsShown = useBreakpointValue({ base: 1, md: 2 });
-  const fontSize = useBreakpointValue({ base: "xs", md: "sm" });
+  const [tab, setTab] = useState("relative");
   const [startDate, setStartDate] = useState(null as DateType);
   const [endDate, setEndDate] = useState(null as DateType);
+
+  const applyPreset = (value: string) => {
+    if (value === "custom") {
+      return;
+    }
+    setCustomOpen(false);
+    setFilter(value);
+    if (filterOptions.indexOf(value) >= 0) {
+      setCustomLabel(t("userDialog.custom"));
+      setCustom(false);
+    } else {
+      setCustomLabel(t("userDialog.custom") + ` (${value})`);
+      setCustom(true);
+    }
+    const num = Number(value.substring(0, value.length - 1));
+    const unit =
+      filterOptionTypes[value[value.length - 1] as keyof typeof filterOptionTypes];
+    onChange(value, {
+      start: dayjs()
+        .utc()
+        .subtract(num, unit as ManipulateType)
+        .format("YYYY-MM-DDTHH:00:00"),
+    });
+  };
+
   const onDateChange = (dates: [DateType, DateType]) => {
     const [start, end] = dates;
     if (endDate && !end) {
@@ -166,7 +130,8 @@ export const UsageFilter: FC<UsageFilterProps> = ({
       setStartDate(start);
       setEndDate(end);
       if (start && end) {
-        closeCustom();
+        setCustomOpen(false);
+        setFilter("custom");
         onChange("custom", {
           start: dayjs(start).format("YYYY-MM-DDT00:00:00"),
           end: dayjs(end).format("YYYY-MM-DDT23:59:59"),
@@ -175,144 +140,139 @@ export const UsageFilter: FC<UsageFilterProps> = ({
     }
   };
 
-  return (
-    <VStack {...props}>
-      {tabIndex == 0 && (
-        <SimpleGrid
-          {...getRootProps()}
-          gap={0}
-          display="flex"
-          borderWidth="1px"
-          borderRadius="md"
-          minW={{ base: "320px", md: "400px" }}
-        >
-          {filterOptions.map((value) => {
-            return (
-              <FilterItem key={value} {...getRadioProps({ value })}>
-                {value}
-              </FilterItem>
-            );
-          })}
-          <Box
-            onClick={() => {
-              setStartDate(null);
-              setEndDate(null);
-              openCustom();
-            }}
-            cursor="pointer"
-            borderRadius="md"
-            w="full"
-            fontSize={fontSize}
-            px={3}
-            py={1}
-            bg={custom ? "primary.500" : "unset"}
-            color={custom ? "white" : "unset"}
-            borderColor={custom ? "primary.500" : "unset"}
-          >
-            <HStack>
-              <Text>{customLabel}</Text>
-              <Icon as={CalendarIcon} boxSize="18px" />
-            </HStack>
-          </Box>
-        </SimpleGrid>
-      )}
-      {tabIndex == 1 && (
-        <HStack
-          onClick={openCustom}
-          cursor="pointer"
-          fontSize={fontSize}
-          borderRadius="md"
-          px={3}
-          py={1}
-          minW={{ base: "320px", md: "400px" }}
-          borderWidth="1px"
-        >
-          <Text w="full" color={startDate ? "unset" : "gray.500"}>
-            {startDate
-              ? dayjs(startDate).format("YYYY-MM-DD (00:00)")
-              : t("userDialog.startDate")}
-          </Text>
-          <Icon as={ChevronRightIcon} boxSize="18px" />
-          <Text w="full" color={endDate ? "unset" : "gray.500"}>
-            {endDate
-              ? dayjs(endDate).format("YYYY-MM-DD (23:59)")
-              : t("userDialog.endDate")}
-          </Text>
-          <Icon as={CalendarIcon} boxSize="18px" />
-        </HStack>
-      )}
-      <VStack
-        ref={customRef}
-        marginTop="40px !important"
-        borderRadius="md"
-        borderWidth="1px"
-        position="absolute"
-        zIndex="1"
-        backgroundColor="white"
-        _dark={{
-          backgroundColor: "gray.700",
-        }}
-        display={isCustomOpen ? "unset" : "none"}
-      >
-        <Tabs onChange={(index) => setTabIndex(index)}>
-          <TabList>
-            <Tab fontSize={fontSize}>{t("userDialog.relative")}</Tab>
-            <Tab fontSize={fontSize}>{t("userDialog.absolute")}</Tab>
-          </TabList>
+  const quickValue = filterOptions.includes(filter) ? filter : undefined;
 
-          <TabPanels>
-            <TabPanel>
-              {customFilterOptions.map((row) => {
-                return (
-                  <VStack key={row.title} alignItems="start" pl={2} pr={2}>
-                    <HStack justifyItems="flex-start" mb={4}>
-                      <Text fontSize={fontSize} minW="60px">
-                        {t("userDialog." + row.title)}
-                      </Text>
-                      {row.options.map((value: string) => {
-                        return (
-                          <FilterItem
-                            key={value + ".custom"}
-                            border={true}
-                            {...getRadioProps({ value })}
-                          >
-                            {value}
-                          </FilterItem>
-                        );
-                      })}
-                    </HStack>
-                  </VStack>
-                );
-              })}
-            </TabPanel>
-            <TabPanel className="datepicker-panel">
-              <VStack>
-                <ReactDatePicker
-                  locale={i18n.language.toLocaleLowerCase()}
-                  selected={startDate}
-                  onChange={onDateChange}
-                  startDate={startDate}
-                  endDate={endDate}
-                  selectsRange={true}
-                  maxDate={new Date()}
-                  monthsShown={monthsShown}
-                  peekNextMonth={false}
-                  inline
-                />
-              </VStack>
-            </TabPanel>
-          </TabPanels>
+  return (
+    <Popover open={isCustomOpen} onOpenChange={setCustomOpen}>
+      <PopoverAnchor asChild>
+        <div className="relative flex flex-col">
+          {tab === "relative" && (
+            <div className="flex min-w-[320px] overflow-hidden rounded-md border md:min-w-[400px]">
+              <RadioGroup
+                value={quickValue}
+                onValueChange={applyPreset}
+                className="flex flex-1 gap-0"
+              >
+                {filterOptions.map((value) => (
+                  <FilterItem
+                    key={value}
+                    value={value}
+                    selected={filter === value}
+                  />
+                ))}
+              </RadioGroup>
+              <button
+                type="button"
+                className={cn(
+                  "flex w-full cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-1 text-xs md:text-sm",
+                  custom && "bg-primary text-white"
+                )}
+                onClick={() => {
+                  setStartDate(null);
+                  setEndDate(null);
+                  setCustomOpen(true);
+                }}
+              >
+                <span>{customLabel}</span>
+                <CalendarIcon className="h-[18px] w-[18px]" />
+              </button>
+            </div>
+          )}
+          {tab === "absolute" && (
+            <button
+              type="button"
+              onClick={() => setCustomOpen(true)}
+              className="flex min-w-[320px] cursor-pointer items-center gap-2 rounded-md border px-3 py-1 text-xs md:min-w-[400px] md:text-sm"
+            >
+              <span
+                className={cn("w-full", !startDate && "text-muted-foreground")}
+              >
+                {startDate
+                  ? dayjs(startDate).format("YYYY-MM-DD (00:00)")
+                  : t("userDialog.startDate")}
+              </span>
+              <ChevronRightIcon className="h-[18px] w-[18px] shrink-0" />
+              <span
+                className={cn("w-full", !endDate && "text-muted-foreground")}
+              >
+                {endDate
+                  ? dayjs(endDate).format("YYYY-MM-DD (23:59)")
+                  : t("userDialog.endDate")}
+              </span>
+              <CalendarIcon className="h-[18px] w-[18px] shrink-0" />
+            </button>
+          )}
+        </div>
+      </PopoverAnchor>
+      <PopoverContent
+        className="w-auto max-w-none p-0"
+        align="start"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+      >
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList className="m-2">
+            <TabsTrigger value="relative" className="text-xs md:text-sm">
+              {t("userDialog.relative")}
+            </TabsTrigger>
+            <TabsTrigger value="absolute" className="text-xs md:text-sm">
+              {t("userDialog.absolute")}
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="relative" className="px-2 pb-3">
+            <RadioGroup
+              value={
+                customFilterOptions.some((row) => row.options.includes(filter))
+                  ? filter
+                  : undefined
+              }
+              onValueChange={applyPreset}
+              className="gap-3"
+            >
+              {customFilterOptions.map((row) => (
+                <div
+                  key={row.title}
+                  className="flex flex-row flex-wrap items-center gap-2"
+                >
+                  <span className="min-w-[60px] text-xs md:text-sm">
+                    {t("userDialog." + row.title)}
+                  </span>
+                  {row.options.map((value) => (
+                    <FilterItem
+                      key={value + ".custom"}
+                      value={value}
+                      border
+                      selected={filter === value}
+                    />
+                  ))}
+                </div>
+              ))}
+            </RadioGroup>
+          </TabsContent>
+          <TabsContent value="absolute" className="datepicker-panel">
+            <ReactDatePicker
+              locale={i18n.language.toLocaleLowerCase()}
+              selected={startDate}
+              onChange={onDateChange}
+              startDate={startDate}
+              endDate={endDate}
+              selectsRange={true}
+              maxDate={new Date()}
+              monthsShown={isMd ? 2 : 1}
+              peekNextMonth={false}
+              inline
+            />
+          </TabsContent>
         </Tabs>
-      </VStack>
-    </VStack>
+      </PopoverContent>
+    </Popover>
   );
 };
 
 export function createUsageConfig(
   colorMode: ColorMode,
   title: string,
-  series: any = [],
-  labels: any = []
+  series: number[] = [],
+  labels: string[] = []
 ) {
   const total = formatBytes((series as [number]).reduce((t, c) => (t += c), 0));
   return {
@@ -331,9 +291,8 @@ export function createUsageConfig(
         text: `${title}${total}`,
         align: "center",
         style: {
-          fontWeight: "var(--chakra-fontWeights-medium)",
-          color:
-            colorMode === "dark" ? "var(--chakra-colors-gray-300)" : undefined,
+          fontWeight: 500,
+          color: colorMode === "dark" ? "#CBD5E0" : undefined,
         },
       },
       legend: {

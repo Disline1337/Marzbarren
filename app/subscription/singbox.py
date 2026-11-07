@@ -288,6 +288,8 @@ class SingBoxConfiguration(str):
         return config
 
     def add(self, remark: str, address: str, inbound: dict, settings: dict):
+        if inbound.get("protocol") not in ("vmess", "vless", "trojan", "shadowsocks"):
+            return
 
         net = inbound["network"]
         path = inbound["path"]

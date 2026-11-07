@@ -239,7 +239,10 @@ class XRayConfig(dict):
 
             if not inbound.get('settings'):
                 inbound['settings'] = {}
-            if not inbound['settings'].get('clients'):
+            if inbound['protocol'] == ProxyTypes.Hysteria:
+                if not inbound['settings'].get('users'):
+                    inbound['settings']['users'] = []
+            elif not inbound['settings'].get('clients'):
                 inbound['settings']['clients'] = []
 
             settings = {
@@ -270,6 +273,7 @@ class XRayConfig(dict):
             # stream settings
             if stream := inbound.get('streamSettings'):
                 net = stream.get('network', 'tcp')
+                method = stream.get('method') or stream.get('network')
                 if net in ('tcp', 'raw'):
                     net_settings = _named_settings(stream, 'rawSettings', 'tcpSettings')
                 elif net in ('xhttp', 'splithttp'):
@@ -289,6 +293,8 @@ class XRayConfig(dict):
                         'streamSettings', {}).get(f"{security}Settings", {})
 
                 settings['network'] = 'xhttp' if net in ('xhttp', 'splithttp') else net
+                if method == 'hysteria' or net == 'hysteria':
+                    settings['network'] = 'hysteria'
 
                 if security == 'tls':
                     # settings['fp']
@@ -308,6 +314,24 @@ class XRayConfig(dict):
                             if isinstance(cert, str):
                                 cert = cert.encode()
                             settings['sni'].extend(get_cert_SANs(cert))
+
+                    server_name = tls_settings.get('serverName') if tls_settings else None
+                    if isinstance(server_name, str) and server_name:
+                        if server_name not in settings['sni']:
+                            settings['sni'].append(server_name)
+                    elif isinstance(server_name, list) and server_name:
+                        first = server_name[0]
+                        if isinstance(first, str) and first and first not in settings['sni']:
+                            settings['sni'].append(first)
+                    if inbound['protocol'] == ProxyTypes.Hysteria and tls_settings:
+                        alpn = tls_settings.get('alpn')
+                        if alpn:
+                            settings['alpn'] = ','.join(alpn) if isinstance(alpn, list) else alpn
+                        fp = tls_settings.get('fingerprint') or tls_settings.get('fp')
+                        if fp:
+                            settings['fp'] = fp
+                        if 'allowInsecure' in tls_settings:
+                            settings['allowinsecure'] = tls_settings['allowInsecure']
 
                 elif security == 'reality':
                     tls_settings = tls_settings or {}
@@ -441,6 +465,10 @@ class XRayConfig(dict):
                     elif host and isinstance(host, list):
                         settings['host'] = host[0]
 
+            if inbound['protocol'] == ProxyTypes.Hysteria:
+                settings['path'] = ""
+                settings['header_type'] = ""
+
             self.inbounds.append(settings)
             self.inbounds_by_tag[inbound['tag']] = settings
 
@@ -507,7 +535,20 @@ class XRayConfig(dict):
                     continue
 
                 for inbound in inbounds:
-                    clients = config.get_inbound(inbound['tag'])['settings']['clients']
+                    inbound_config = config.get_inbound(inbound['tag'])
+                    if proxy_type == ProxyTypes.Hysteria.value:
+                        users = inbound_config['settings'].setdefault('users', [])
+                        for row in rows:
+                            user_id, username, settings, excluded_inbound_tags = row
+                            if excluded_inbound_tags and inbound['tag'] in excluded_inbound_tags:
+                                continue
+                            users.append({
+                                "email": f"{user_id}.{username}",
+                                "auth": settings["auth"],
+                            })
+                        continue
+
+                    clients = inbound_config['settings']['clients']
 
                     for row in rows:
                         user_id, username, settings, excluded_inbound_tags = row

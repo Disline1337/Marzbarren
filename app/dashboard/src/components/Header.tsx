@@ -1,16 +1,4 @@
 import {
-  Box,
-  chakra,
-  HStack,
-  IconButton,
-  Menu,
-  MenuButton,
-  MenuItem,
-  MenuList,
-  Text,
-  useColorMode,
-} from "@chakra-ui/react";
-import {
   ArrowLeftOnRectangleIcon,
   Bars3Icon,
   ChartPieIcon,
@@ -23,10 +11,18 @@ import {
   SquaresPlusIcon,
   SunIcon,
 } from "@heroicons/react/24/outline";
+import { Button } from "components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "components/ui/dropdown-menu";
 import { DONATION_URL, REPO_URL } from "constants/Project";
 import { useDashboard } from "contexts/DashboardContext";
 import differenceInDays from "date-fns/differenceInDays";
 import isValid from "date-fns/isValid";
+import { useTheme } from "next-themes";
 import { FC, ReactNode, useState } from "react";
 import GitHubButton from "react-github-btn";
 import { useTranslation } from "react-i18next";
@@ -38,33 +34,6 @@ import useGetUser from "hooks/useGetUser";
 type HeaderProps = {
   actions?: ReactNode;
 };
-const iconProps = {
-  baseStyle: {
-    w: 4,
-    h: 4,
-  },
-};
-
-const DarkIcon = chakra(MoonIcon, iconProps);
-const LightIcon = chakra(SunIcon, iconProps);
-const CoreSettingsIcon = chakra(Cog6ToothIcon, iconProps);
-const SettingsIcon = chakra(Bars3Icon, iconProps);
-const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
-const DonationIcon = chakra(CurrencyDollarIcon, iconProps);
-const HostsIcon = chakra(LinkIcon, iconProps);
-const RoutingIcon = chakra(MapIcon, iconProps);
-const NodesIcon = chakra(SquaresPlusIcon, iconProps);
-const NodesUsageIcon = chakra(ChartPieIcon, iconProps);
-const ResetUsageIcon = chakra(DocumentMinusIcon, iconProps);
-const NotificationCircle = chakra(Box, {
-  baseStyle: {
-    bg: "yellow.500",
-    w: "2",
-    h: "2",
-    rounded: "full",
-    position: "absolute",
-  },
-});
 
 const NOTIFICATION_KEY = "marzban-menu-notification";
 
@@ -100,7 +69,8 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
     onShowingNodesUsage,
   } = useDashboard();
   const { t } = useTranslation();
-  const { colorMode, toggleColorMode } = useColorMode();
+  const { theme, setTheme } = useTheme();
+  const colorMode = theme === "dark" ? "dark" : "light";
   const [showDonationNotif, setShowDonationNotif] = useState(
     shouldShowDonation()
   );
@@ -112,143 +82,117 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
   };
 
   return (
-    <HStack
-      gap={2}
-      justifyContent="space-between"
-      __css={{
-        "& .menuList": {
-          direction: "ltr",
-        },
-      }}
-      position="relative"
-    >
-      <Text as="h1" fontWeight="semibold" fontSize="2xl">
-        {t("users")}
-      </Text>
-      {showDonationNotif && (
-        <NotificationCircle top="0" right="0" zIndex={9999} />
-      )}
-      <Box overflow="auto" css={{ direction: "rtl" }}>
-        <HStack alignItems="center">
-          <Menu>
-            <MenuButton
-              as={IconButton}
-              size="sm"
-              variant="outline"
-              icon={
-                <>
-                  <SettingsIcon />
-                </>
-              }
-              position="relative"
-            ></MenuButton>
-            <MenuList minW="170px" zIndex={99999} className="menuList">
+    <div className="relative flex flex-row items-center justify-between gap-2">
+      <h1 className="text-2xl font-semibold">{t("users")}</h1>
+      <div className="overflow-auto" dir="rtl">
+        <div className="flex flex-row items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="relative">
+                <Bars3Icon className="h-4 w-4" />
+                {showDonationNotif && (
+                  <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-yellow-500" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="menuList min-w-[170px]" style={{ direction: "ltr" }}>
               {isSudo() && (
                 <>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<HostsIcon />}
+                  <DropdownMenuItem
+                    className="max-w-[170px] text-sm"
                     onClick={onEditingHosts.bind(null, true)}
                   >
+                    <LinkIcon className="mr-2 h-4 w-4" />
                     {t("header.hostSettings")}
-                  </MenuItem>
-                  <MenuItem
-                    fontSize="sm"
-                    whiteSpace="normal"
-                    icon={<RoutingIcon />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-sm whitespace-normal"
                     onClick={() => {
                       useDashboard.setState({ isEditingClientRouting: true });
                     }}
                   >
+                    <MapIcon className="mr-2 h-4 w-4" />
                     {t("header.clientRouting")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<NodesIcon />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="max-w-[170px] text-sm"
                     onClick={onEditingNodes.bind(null, true)}
                   >
+                    <SquaresPlusIcon className="mr-2 h-4 w-4" />
                     {t("header.nodeSettings")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<NodesUsageIcon />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="max-w-[170px] text-sm"
                     onClick={onShowingNodesUsage.bind(null, true)}
                   >
+                    <ChartPieIcon className="mr-2 h-4 w-4" />
                     {t("header.nodesUsage")}
-                  </MenuItem>
-                  <MenuItem
-                    maxW="170px"
-                    fontSize="sm"
-                    icon={<ResetUsageIcon />}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="max-w-[170px] text-sm"
                     onClick={onResetAllUsage.bind(null, true)}
                   >
+                    <DocumentMinusIcon className="mr-2 h-4 w-4" />
                     {t("resetAllUsage")}
-                  </MenuItem>
+                  </DropdownMenuItem>
                 </>
               )}
-              <Link to={DONATION_URL} target="_blank">
-                <MenuItem
-                  maxW="170px"
-                  fontSize="sm"
-                  icon={<DonationIcon />}
-                  position="relative"
+              <DropdownMenuItem className="max-w-[170px] text-sm" asChild>
+                <Link
+                  to={DONATION_URL}
+                  target="_blank"
+                  className="relative flex items-center"
                   onClick={handleOnClose}
                 >
+                  <CurrencyDollarIcon className="mr-2 h-4 w-4" />
                   {t("header.donation")}{" "}
                   {showDonationNotif && (
-                    <NotificationCircle top="3" right="2" />
+                    <span className="absolute right-2 top-3 h-2 w-2 rounded-full bg-yellow-500" />
                   )}
-                </MenuItem>
-              </Link>
-              <Link to="/login">
-                <MenuItem maxW="170px" fontSize="sm" icon={<LogoutIcon />}>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem className="max-w-[170px] text-sm" asChild>
+                <Link to="/login" className="flex items-center">
+                  <ArrowLeftOnRectangleIcon className="mr-2 h-4 w-4" />
                   {t("header.logout")}
-                </MenuItem>
-              </Link>
-            </MenuList>
-          </Menu>
+                </Link>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {isSudo() && (
-            <IconButton
-              size="sm"
+            <Button
+              size="icon"
               variant="outline"
               aria-label="core settings"
               onClick={() => {
                 useDashboard.setState({ isEditingCore: true });
               }}
             >
-              <CoreSettingsIcon />
-            </IconButton>
+              <Cog6ToothIcon className="h-4 w-4" />
+            </Button>
           )}
 
           <Language />
 
-          <IconButton
-            size="sm"
+          <Button
+            size="icon"
             variant="outline"
             aria-label="switch theme"
             onClick={() => {
-              updateThemeColor(colorMode == "dark" ? "light" : "dark");
-              toggleColorMode();
+              const next = colorMode == "dark" ? "light" : "dark";
+              updateThemeColor(next);
+              setTheme(next);
             }}
           >
-            {colorMode === "light" ? <DarkIcon /> : <LightIcon />}
-          </IconButton>
+            {colorMode === "light" ? (
+              <MoonIcon className="h-4 w-4" />
+            ) : (
+              <SunIcon className="h-4 w-4" />
+            )}
+          </Button>
 
-          <Box
-            css={{ direction: "ltr" }}
-            display="flex"
-            alignItems="center"
-            pr="2"
-            __css={{
-              "&  span": {
-                display: "inline-flex",
-              },
-            }}
-          >
+          <div className="flex items-center pr-2 [&_span]:inline-flex" dir="ltr">
             <GitHubButton
               href={REPO_URL}
               data-color-scheme={`no-preference: ${gBtnColor}; light: ${gBtnColor}; dark: ${gBtnColor};`}
@@ -258,9 +202,9 @@ export const Header: FC<HeaderProps> = ({ actions }) => {
             >
               Star
             </GitHubButton>
-          </Box>
-        </HStack>
-      </Box>
-    </HStack>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };

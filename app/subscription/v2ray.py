@@ -4,7 +4,7 @@ import json
 import urllib.parse as urlparse
 from random import choice
 from typing import Optional, Union
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 from uuid import UUID
 
 from jinja2.exceptions import TemplateNotFound
@@ -168,6 +168,25 @@ class V2rayShareLink(str):
                 password=settings["password"],
                 method=settings["method"],
             )
+        elif inbound["protocol"] == "hysteria":
+            if inbound.get("tls") != "tls":
+                return
+            auth = quote(settings["auth"], safe="")
+            params = {}
+            sni = inbound.get("sni") or ""
+            if sni:
+                params["sni"] = sni if isinstance(sni, str) else sni[0]
+            ais = inbound.get("ais")
+            if ais is not None and ais != "":
+                params["insecure"] = "1" if ais else "0"
+            alpn = inbound.get("alpn")
+            if alpn:
+                params["alpn"] = alpn if isinstance(alpn, str) else ",".join(alpn)
+            query = urlencode(params)
+            link = f"hy2://{auth}@{address}:{inbound['port']}"
+            if query:
+                link += f"?{query}"
+            link += f"#{quote(remark)}"
         else:
             return
 
@@ -1041,6 +1060,29 @@ class V2rayJsonConfig(str):
                                                            port=port,
                                                            password=settings['password'],
                                                            method=settings['method'])
+
+        elif inbound['protocol'] == 'hysteria':
+            if tls != 'tls':
+                return
+            alpn = inbound.get('alpn', None)
+            outbound = {
+                "tag": "proxy",
+                "protocol": "hysteria",
+                "settings": {"version": 2, "address": address, "port": int(port)},
+                "streamSettings": {
+                    "method": "hysteria",
+                    "security": "tls",
+                    "tlsSettings": self.tls_config(
+                        sni=inbound.get("sni") or None,
+                        fp=inbound.get("fp") or None,
+                        alpn=alpn.rsplit(sep=",") if isinstance(alpn, str) and alpn else alpn,
+                        ais=inbound.get("ais") or False,
+                    ),
+                    "hysteriaSettings": {"version": 2, "auth": settings["auth"]},
+                },
+            }
+            self.add_config(remarks=remark, outbounds=[outbound])
+            return
 
         outbounds = [outbound]
         dialer_proxy = ''

@@ -1,25 +1,9 @@
-import {
-  chakra,
-  FormControl,
-  FormErrorMessage,
-  FormLabel,
-  InputGroup,
-  InputLeftAddon,
-  InputRightAddon,
-  InputRightElement,
-  Textarea as ChakraTextarea,
-  TextareaProps as ChakraTextareaProps,
-} from "@chakra-ui/react";
 import { XMarkIcon } from "@heroicons/react/24/outline";
-import classNames from "classnames";
+import { Button } from "components/ui/button";
+import { Label } from "components/ui/label";
+import { Textarea as UiTextarea } from "components/ui/textarea";
+import { cn } from "lib/utils";
 import React, { PropsWithChildren, ReactNode } from "react";
-
-const ClearIcon = chakra(XMarkIcon, {
-  baseStyle: {
-    w: 4,
-    h: 4,
-  },
-});
 
 export type TextareaProps = PropsWithChildren<
   {
@@ -38,14 +22,13 @@ export type TextareaProps = PropsWithChildren<
     step?: number;
     label?: string;
     clearable?: boolean;
-  } & ChakraTextareaProps
+  } & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, "value">
 >;
 
 export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
   (
     {
       disabled,
-      step,
       label,
       className,
       startAdornment,
@@ -58,6 +41,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
       onClick,
       error,
       clearable = false,
+      id,
       ...props
     },
     ref
@@ -71,72 +55,67 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           },
         });
     };
-    const { size = "md" } = props;
+    const inputId = id || name;
+    const showClear = Boolean(clearable && value && value.length);
+    const hasAddon = Boolean(startAdornment || endAdornment || showClear);
 
     return (
-      <FormControl isInvalid={!!error}>
-        {label && <FormLabel>{label}</FormLabel>}
-        <InputGroup
-          size={size}
-          w="full"
-          rounded="md"
-          _focusWithin={{
-            outline: "2px solid",
-            outlineColor: "primary.200",
-          }}
-          bg={disabled ? "gray.100" : "transparent"}
-          _dark={{ bg: disabled ? "gray.600" : "transparent" }}
+      <div className="w-full">
+        {label && (
+          <Label htmlFor={inputId} className="mb-1 block text-sm font-medium">
+            {label}
+          </Label>
+        )}
+        <div
+          className={cn(
+            "flex w-full items-stretch rounded-[6px]",
+            hasAddon &&
+              "overflow-hidden border border-input focus-within:border-primary/50 focus-within:ring-2 focus-within:ring-primary/40 dark:border-gray-600",
+            disabled && "cursor-not-allowed bg-muted opacity-50",
+            error && "border-destructive"
+          )}
         >
-          {startAdornment && <InputLeftAddon>{startAdornment}</InputLeftAddon>}
-          {/* @ts-ignore */}
-          <ChakraTextarea
+          {startAdornment && (
+            <div className="flex items-center border-r border-input bg-muted px-3 text-sm text-muted-foreground dark:border-gray-600">
+              {startAdornment}
+            </div>
+          )}
+          <UiTextarea
+            id={inputId}
             name={name}
             ref={ref}
-            step={step}
-            className={classNames(className)}
+            className={cn(
+              "min-h-[80px] flex-1",
+              hasAddon && "rounded-none border-0 focus-visible:ring-0",
+              className
+            )}
             placeholder={placeholder}
             onChange={onChange}
             onBlur={onBlur}
             value={value}
             onClick={onClick}
             disabled={disabled}
-            flexGrow={1}
-            _focusVisible={{
-              outline: "none",
-              borderTopColor: "transparent",
-              borderRightColor: "transparent",
-              borderBottomColor: "transparent",
-            }}
-            _disabled={{
-              cursor: "not-allowed",
-            }}
             {...props}
-            roundedLeft={startAdornment ? "0" : "md"}
-            roundedRight={endAdornment ? "0" : "md"}
           />
           {endAdornment && (
-            <InputRightAddon
-              borderLeftRadius={0}
-              borderRightRadius="6px"
-              bg="transparent"
-            >
+            <div className="flex items-center border-l border-input px-3 text-sm text-muted-foreground dark:border-gray-600">
               {endAdornment}
-            </InputRightAddon>
+            </div>
           )}
-          {clearable && value && value.length && (
-            <InputRightElement
-              borderLeftRadius={0}
-              borderRightRadius="6px"
-              bg="transparent"
+          {showClear && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10 shrink-0 rounded-none"
               onClick={clear}
-              cursor="pointer"
             >
-              <ClearIcon />
-            </InputRightElement>
+              <XMarkIcon className="h-4 w-4" />
+            </Button>
           )}
-        </InputGroup>
-        {!!error && <FormErrorMessage>{error}</FormErrorMessage>}
-      </FormControl>
+        </div>
+        {!!error && <p className="mt-1 text-sm text-destructive">{error}</p>}
+      </div>
     );
   }
 );

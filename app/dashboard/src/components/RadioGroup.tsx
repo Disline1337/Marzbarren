@@ -1,25 +1,20 @@
+import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
 import {
   Accordion,
-  AccordionButton,
+  AccordionContent,
   AccordionItem,
-  AccordionPanel,
-  Badge,
-  Box,
-  chakra,
-  Checkbox,
-  FormControl,
-  HStack,
-  IconButton,
-  Input,
+  AccordionTrigger,
+} from "components/ui/accordion";
+import { Badge } from "components/ui/badge";
+import { Checkbox } from "components/ui/checkbox";
+import { Input } from "components/ui/input";
+import {
   Select,
-  SimpleGrid,
-  Text,
-  useCheckbox,
-  useCheckboxGroup,
-  UseRadioProps,
-  VStack,
-} from "@chakra-ui/react";
-import { EllipsisVerticalIcon } from "@heroicons/react/24/outline";
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "components/ui/select";
 import { shadowsocksMethods, XTLSFlows } from "constants/Proxies";
 import {
   InboundType,
@@ -27,429 +22,306 @@ import {
   useDashboard,
 } from "contexts/DashboardContext";
 import { t } from "i18next";
-import { FC, forwardRef, PropsWithChildren, useState } from "react";
+import { cn } from "lib/utils";
+import { FC, forwardRef, useState } from "react";
 import {
   ControllerRenderProps,
   useFormContext,
   useWatch,
 } from "react-hook-form";
 
-const SettingsIcon = chakra(EllipsisVerticalIcon, {
-  baseStyle: {
-    strokeWidth: "2px",
-    w: 5,
-    h: 5,
-  },
-});
+const NONE = "__none__";
 
-const InboundCard: FC<
-  PropsWithChildren<UseRadioProps & { inbound: InboundType }>
-> = ({ inbound, ...props }) => {
-  const { getCheckboxProps, getInputProps, getLabelProps, htmlProps } =
-    useCheckbox(props);
-  const inputProps = getInputProps();
+const InboundCard: FC<{
+  inbound: InboundType;
+  checked: boolean;
+  disabled?: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}> = ({ inbound, checked, disabled, onCheckedChange }) => {
   return (
-    <Box as="label">
-      <input {...inputProps} />
-      <Box
-        w="fll"
-        position="relative"
-        {...htmlProps}
-        cursor="pointer"
-        borderRadius="sm"
-        border="1px solid"
-        borderColor={"gray.200"}
-        _dark={{
-          borderColor: "gray.600",
-        }}
-        display="flex"
-        alignItems="center"
-        justifyContent="space-between"
-        overflow="hidden"
-        _checked={{
-          bg: "gray.50",
-          outline: "2px",
-          boxShadow: "outline",
-          outlineColor: "primary.500",
-          borderColor: "transparent",
-          fontWeight: "medium",
-          _dark: {
-            bg: "gray.750",
-            borderColor: "transparent",
-          },
-          "& p": {
-            opacity: 1,
-          },
-        }}
-        __css={{
-          "& p": {
-            opacity: 0.8,
-          },
-        }}
-        textTransform="capitalize"
-        px={3}
-        py={2}
-        fontWeight="medium"
-        {...getCheckboxProps()}
-      >
+    <label
+      className={cn(
+        "flex cursor-pointer items-center justify-between gap-2 overflow-hidden rounded-sm border border-gray-200 px-3 py-2 text-sm font-medium capitalize dark:border-gray-600",
+        checked &&
+          "border-transparent bg-gray-50 font-medium ring-2 ring-primary dark:bg-[#222C3B]"
+      )}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2">
         <Checkbox
-          size="sm"
-          w="full"
-          maxW="full"
-          color="gray.700"
-          _dark={{ color: "gray.300" }}
-          textTransform="uppercase"
-          colorScheme="primary"
-          className="inbound-item"
-          isChecked={inputProps.checked}
-          pointerEvents="none"
-          flexGrow={1}
+          checked={checked}
+          disabled={disabled}
+          onCheckedChange={(value) => onCheckedChange(value === true)}
+          className="inbound-item pointer-events-none"
+        />
+        <span
+          className={cn(
+            "truncate text-xs uppercase text-gray-700 dark:text-gray-300",
+            checked ? "opacity-100" : "opacity-80"
+          )}
         >
-          <HStack
-            justify="space-between"
-            w="full"
-            maxW="calc(100% - 20px)"
-            spacing={0}
-            gap={2}
-            overflow="hidden"
-          >
-            <Text isTruncated {...getLabelProps()} fontSize="xs">
-              {inbound.tag} <Text as="span">({inbound.network})</Text>
-            </Text>
-          </HStack>
-        </Checkbox>
-        {inbound.tls && inbound.tls != "none" && (
-          <Badge fontSize="xs" opacity=".8" size="xs">
-            {inbound.tls}
-          </Badge>
-        )}
-      </Box>
-    </Box>
+          {inbound.tag} <span>({inbound.network})</span>
+        </span>
+      </span>
+      {inbound.tls && inbound.tls != "none" && (
+        <Badge variant="secondary" className="text-xs opacity-80">
+          {inbound.tls}
+        </Badge>
+      )}
+    </label>
   );
 };
 
-const RadioCard: FC<
-  PropsWithChildren<
-    UseRadioProps & {
-      disabled?: boolean;
-      title: string;
-      description: string;
-      toggleAccordion: () => void;
-      isSelected: boolean;
-    }
-  >
-> = ({
+const ProtocolSelect: FC<{
+  name: string;
+  options: { title: string; value: string }[];
+  disabled?: boolean;
+}> = ({ name, options, disabled }) => {
+  const form = useFormContext();
+  const current = (useWatch({ name, control: form.control }) as string) ?? "";
+  const value = current === "" ? NONE : current;
+  return (
+    <Select
+      value={value}
+      disabled={disabled}
+      onValueChange={(next) =>
+        form.setValue(name, next === NONE ? "" : next, {
+          shouldDirty: true,
+          shouldValidate: true,
+        })
+      }
+    >
+      <SelectTrigger className="h-9 text-xs">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((entry) => (
+          <SelectItem
+            key={entry.title}
+            value={entry.value === "" ? NONE : entry.value}
+          >
+            {entry.title}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+};
+
+const RadioCard: FC<{
+  disabled?: boolean;
+  title: string;
+  description: string;
+  toggleAccordion: () => void;
+  isSelected: boolean;
+  onToggle: (checked: boolean) => void;
+}> = ({
   disabled,
   title,
   description,
   toggleAccordion,
   isSelected,
-  ...props
+  onToggle,
 }) => {
   const form = useFormContext();
   const { inbounds } = useDashboard();
-  const { getCheckboxProps, getInputProps, getLabelProps, htmlProps } =
-    useCheckbox(props);
-
-  const inputProps = getInputProps();
-
   const [inBoundDefaultValue] = useWatch({
     name: [`inbounds.${title}`],
     control: form.control,
   });
+  const selectedInbounds: string[] = inBoundDefaultValue || [];
 
-  const { getCheckboxProps: getInboundCheckboxProps } = useCheckboxGroup({
-    value: inBoundDefaultValue,
-    onChange: (selectedInbounds) => {
-      form.setValue(`inbounds.${title}`, selectedInbounds);
-      if (selectedInbounds.length === 0) {
-        const selected_proxies = form.getValues("selected_proxies");
-        form.setValue(
-          `selected_proxies`,
-          selected_proxies.filter((p: string) => p !== title)
-        );
-        toggleAccordion();
-      }
-    },
-  });
+  const setInbounds = (next: string[]) => {
+    form.setValue(`inbounds.${title}`, next);
+    if (next.length === 0) {
+      const selected_proxies = form.getValues("selected_proxies");
+      form.setValue(
+        `selected_proxies`,
+        selected_proxies.filter((p: string) => p !== title)
+      );
+      toggleAccordion();
+    }
+  };
 
+  const protocolInbounds =
+    useDashboard.getState().inbounds.get(title as ProtocolType) || [];
   const isPartialSelected =
-    inBoundDefaultValue &&
+    !!inBoundDefaultValue &&
     isSelected &&
-    (useDashboard.getState().inbounds.get(title as ProtocolType) || [])
-      .length !== inBoundDefaultValue.length;
-
-  const protocolHasInbound =
-    (useDashboard.getState().inbounds.get(title as ProtocolType) || []).length >
-    0;
-
+    protocolInbounds.length !== selectedInbounds.length;
+  const protocolHasInbound = protocolInbounds.length > 0;
   const shouldBeDisabled = !isSelected && !protocolHasInbound;
 
   return (
     <AccordionItem
-      isDisabled={!protocolHasInbound}
-      borderRadius="md"
-      borderStyle="solid"
-      border="1px"
-      borderColor="gray.200"
-      bg={shouldBeDisabled ? "gray.100" : "transparent"}
-      _dark={{
-        borderColor: "gray.600",
-        bg: shouldBeDisabled ? "#364154" : "transparent",
-      }}
-      _checked={{
-        bg: "gray.50",
-        outline: "2px",
-        boxShadow: "outline",
-        outlineColor: "primary.500",
-        borderColor: "transparent",
-      }}
-      {...getCheckboxProps()}
+      value={title}
+      disabled={!protocolHasInbound}
+      className={cn(
+        "overflow-hidden rounded-md border border-gray-200 dark:border-gray-600",
+        shouldBeDisabled ? "bg-gray-100 dark:bg-[#364154]" : "bg-transparent",
+        isSelected &&
+          "border-transparent bg-gray-50 ring-2 ring-primary dark:bg-[#222C3B]"
+      )}
     >
-      <Box as={shouldBeDisabled ? "span" : "label"} position="relative">
+      <div className="relative flex items-start">
         {isPartialSelected && (
-          <Box
-            position="absolute"
-            w="2"
-            h="2"
-            bg="yellow.500"
-            top="-1"
-            right="-1"
-            rounded="full"
-            zIndex={999}
-          />
+          <span className="absolute -right-1 -top-1 z-10 h-2 w-2 rounded-full bg-yellow-500" />
         )}
-        <input {...inputProps} />
-        <Box
-          w="fll"
-          position="relative"
-          {...htmlProps}
-          borderRadius="md"
-          cursor={shouldBeDisabled ? "not-allowed" : "pointer"}
-          _checked={{
-            fontWeight: "medium",
-            _dark: {
-              bg: "gray.750",
-              borderColor: "transparent",
-            },
-            "& > svg": {
-              opacity: 1,
-              "&.checked": {
-                display: "block",
-              },
-              "&.unchecked": {
-                display: "none",
-              },
-            },
-            "& p": {
-              opacity: 1,
-            },
-          }}
-          __css={{
-            "& > svg": {
-              opacity: 0.3,
-              "&.checked": {
-                display: "none",
-              },
-              "&.unchecked": {
-                display: "block",
-              },
-            },
-            "& p": {
-              opacity: 0.8,
-            },
-          }}
-          textTransform="capitalize"
-          px={3}
-          py={2}
-          fontWeight="medium"
-          {...getCheckboxProps()}
+        <label
+          className={cn(
+            "relative min-w-0 flex-1 px-3 py-2 capitalize",
+            shouldBeDisabled ? "pointer-events-none cursor-not-allowed" : "cursor-pointer"
+          )}
         >
-          <AccordionButton
-            display={
-              inputProps.checked && protocolHasInbound ? "block" : "none"
-            }
-            as="span"
-            className="checked"
-            color="primary.200"
-            position="absolute"
-            right="3"
-            top="3"
-            w="auto"
-            p={0}
-            onClick={toggleAccordion}
-          >
-            <IconButton size="sm" aria-label="inbound settings">
-              <SettingsIcon />
-            </IconButton>
-          </AccordionButton>
-
-          <Text
-            fontSize="sm"
-            color={shouldBeDisabled ? "gray.400" : "gray.700"}
-            _dark={{ color: shouldBeDisabled ? "gray.500" : "gray.300" }}
-            {...getLabelProps()}
+          <Checkbox
+            checked={isSelected}
+            disabled={disabled || shouldBeDisabled}
+            onCheckedChange={(value) => {
+              if (shouldBeDisabled) return;
+              onToggle(value === true);
+            }}
+            className="sr-only"
+          />
+          <p
+            className={cn(
+              "text-sm",
+              shouldBeDisabled
+                ? "text-gray-400 dark:text-gray-500"
+                : "text-gray-700 dark:text-gray-200",
+              isSelected ? "font-medium opacity-100" : "opacity-80"
+            )}
           >
             {title}
-          </Text>
-          <Text
-            fontWeight="medium"
-            color={shouldBeDisabled ? "gray.400" : "gray.600"}
-            _dark={{ color: shouldBeDisabled ? "gray.500" : "gray.400" }}
-            fontSize="xs"
+          </p>
+          <p
+            className={cn(
+              "text-xs font-medium",
+              shouldBeDisabled
+                ? "text-gray-400 dark:text-gray-500"
+                : "text-gray-600 dark:text-gray-400",
+              isSelected ? "opacity-100" : "opacity-80"
+            )}
           >
             {description}
-          </Text>
-        </Box>
-      </Box>
-      <AccordionPanel
-        px={2}
-        pb={3}
-        roundedBottom="5px"
-        pt={3}
-        _dark={{ bg: inputProps.checked && "gray.750" }}
+          </p>
+        </label>
+        {isSelected && protocolHasInbound && (
+          <AccordionTrigger
+            className="mt-1 mr-1 h-auto w-auto shrink-0 flex-none p-0 hover:no-underline [&>svg:last-child]:hidden"
+          >
+            <span className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-black/5 dark:hover:bg-white/10">
+              <EllipsisVerticalIcon className="h-5 w-5 stroke-2 text-primary" />
+            </span>
+          </AccordionTrigger>
+        )}
+      </div>
+      <AccordionContent
+        className={cn(
+          "rounded-b-md px-2 pb-3 pt-0",
+          isSelected && "dark:bg-[#222C3B]"
+        )}
       >
-        <VStack
-          w="full"
-          rowGap={2}
-          borderStyle="solid"
-          borderWidth="1px"
-          borderRadius="md"
-          pl={3}
-          pr={3}
-          pt={1.5}
-          _dark={{ bg: "gray.700" }}
-        >
-          <VStack alignItems="flex-start" w="full">
-            <Text fontSize="sm">{t("inbound")}</Text>
-            <SimpleGrid
-              gap={2}
-              alignItems="flex-start"
-              w="full"
-              columns={1}
-              spacing={1}
-            >
+        <div className="flex w-full flex-col gap-2 rounded-md border px-3 pb-3 pt-1.5 dark:bg-gray-700">
+          <div className="flex w-full flex-col items-start gap-1">
+            <p className="text-sm">{t("inbound")}</p>
+            <div className="flex w-full flex-col gap-2">
               {(
                 (inbounds.get(title as ProtocolType) as InboundType[]) || []
-              ).map((inbound) => {
-                return (
-                  <InboundCard
-                    key={inbound.tag}
-                    {...getInboundCheckboxProps({ value: inbound.tag })}
-                    inbound={inbound}
-                  />
-                );
-              })}
-            </SimpleGrid>
-          </VStack>
-          {title === "vmess" && isSelected && (
-            <VStack alignItems="flex-start" w="full">
-              <FormControl height="66px">
-                <Text fontSize="sm" pb={1}>
-                  ID
-                </Text>
-                <Input
-                  fontSize="xs"
-                  size="sm"
-                  borderRadius="6px"
-                  pl={2}
-                  pr={2}
-                  placeholder={t("userDialog.generatedByDefault")}
-                  {...form.register("proxies.vmess.id")}
+              ).map((inbound) => (
+                <InboundCard
+                  key={inbound.tag}
+                  inbound={inbound}
+                  checked={selectedInbounds.includes(inbound.tag)}
+                  disabled={disabled}
+                  onCheckedChange={(checked) => {
+                    const next = checked
+                      ? [...selectedInbounds, inbound.tag]
+                      : selectedInbounds.filter((tag) => tag !== inbound.tag);
+                    setInbounds(next);
+                  }}
                 />
-              </FormControl>
-            </VStack>
+              ))}
+            </div>
+          </div>
+          {title === "vmess" && isSelected && (
+            <label className="flex h-[66px] w-full flex-col items-start gap-1">
+              <span className="text-sm">ID</span>
+              <Input
+                className="h-9 text-xs"
+                placeholder={t("userDialog.generatedByDefault")}
+                disabled={disabled}
+                {...form.register("proxies.vmess.id")}
+              />
+            </label>
           )}
           {title === "vless" && isSelected && (
-            <VStack alignItems="flex-start" w="full">
-              <FormControl height="66px">
-                <Text fontSize="sm" pb={1}>
-                  ID
-                </Text>
+            <div className="flex w-full flex-col items-start gap-2">
+              <label className="flex h-[66px] w-full flex-col items-start gap-1">
+                <span className="text-sm">ID</span>
                 <Input
-                  fontSize="xs"
-                  size="sm"
-                  borderRadius="6px"
-                  pl={2}
-                  pr={2}
+                  className="h-9 text-xs"
                   placeholder={t("userDialog.generatedByDefault")}
+                  disabled={disabled}
                   {...form.register("proxies.vless.id")}
                 />
-              </FormControl>
-              <FormControl height="66px">
-                <Text fontSize="sm" pb={1}>
-                  Flow
-                </Text>
-                <Select
-                  fontSize="xs"
-                  size="sm"
-                  borderRadius="6px"
-                  {...form.register("proxies.vless.flow")}
-                >
-                  {XTLSFlows.map((entry) => (
-                    <option key={entry.title} value={entry.value}>
-                      {entry.title}
-                    </option>
-                  ))}
-                </Select>
-              </FormControl>
-            </VStack>
+              </label>
+              <label className="flex h-[66px] w-full flex-col items-start gap-1">
+                <span className="text-sm">Flow</span>
+                <ProtocolSelect
+                  name="proxies.vless.flow"
+                  options={XTLSFlows}
+                  disabled={disabled}
+                />
+              </label>
+            </div>
           )}
           {title === "trojan" && isSelected && (
-            <VStack alignItems="flex-start" w="full">
-              <FormControl height="66px">
-                <Text fontSize="sm" pb={1}>
-                  {t("password")}
-                </Text>
-                <Input
-                  fontSize="xs"
-                  size="sm"
-                  borderRadius="6px"
-                  pl={2}
-                  pr={2}
-                  placeholder={t("userDialog.generatedByDefault")}
-                  {...form.register("proxies.trojan.password")}
-                />
-              </FormControl>
-            </VStack>
+            <label className="flex h-[66px] w-full flex-col items-start gap-1">
+              <span className="text-sm">{t("password")}</span>
+              <Input
+                className="h-9 text-xs"
+                placeholder={t("userDialog.generatedByDefault")}
+                disabled={disabled}
+                {...form.register("proxies.trojan.password")}
+              />
+            </label>
+          )}
+          {title === "hysteria" && isSelected && (
+            <label className="flex h-[66px] w-full flex-col items-start gap-1">
+              <span className="text-sm">{t("password")}</span>
+              <Input
+                className="h-9 text-xs"
+                placeholder={t("userDialog.generatedByDefault")}
+                disabled={disabled}
+                {...form.register("proxies.hysteria.auth")}
+              />
+            </label>
           )}
           {title === "shadowsocks" && isSelected && (
-            <VStack alignItems="flex-start" w="full">
-              <FormControl height="66px">
-                <Text fontSize="sm" pb={1}>
-                  {t("password")}
-                </Text>
+            <div className="flex w-full flex-col items-start gap-2">
+              <label className="flex h-[66px] w-full flex-col items-start gap-1">
+                <span className="text-sm">{t("password")}</span>
                 <Input
-                  fontSize="xs"
-                  size="sm"
-                  borderRadius="6px"
-                  pl={2}
-                  pr={2}
+                  className="h-9 text-xs"
                   placeholder={t("userDialog.generatedByDefault")}
+                  disabled={disabled}
                   {...form.register("proxies.shadowsocks.password")}
                 />
-              </FormControl>
-              <FormControl height="66px">
-                <Text fontSize="sm" pb={1}>
-                  {t("userDialog.method")}
-                </Text>
-                <Select
-                  fontSize="xs"
-                  size="sm"
-                  borderRadius="6px"
-                  {...form.register("proxies.shadowsocks.method")}
-                >
-                  {shadowsocksMethods.map((method) => (
-                    <option key={method} value={method}>
-                      {method}
-                    </option>
-                  ))}
-                </Select>
-              </FormControl>
-            </VStack>
+              </label>
+              <label className="flex h-[66px] w-full flex-col items-start gap-1">
+                <span className="text-sm">{t("userDialog.method")}</span>
+                <ProtocolSelect
+                  name="proxies.shadowsocks.method"
+                  options={shadowsocksMethods.map((method) => ({
+                    title: method,
+                    value: method,
+                  }))}
+                  disabled={disabled}
+                />
+              </label>
+            </div>
           )}
-        </VStack>
-      </AccordionPanel>
+        </div>
+      </AccordionContent>
     </AccordionItem>
   );
 };
@@ -464,73 +336,68 @@ export type RadioGroupProps = ControllerRenderProps & {
   disabled?: boolean;
 };
 
-export const RadioGroup = forwardRef<any, RadioGroupProps>(
+export const RadioGroup = forwardRef<HTMLDivElement, RadioGroupProps>(
   ({ name, list, onChange, disabled, ...props }, ref) => {
     const form = useFormContext();
-    const [expandedAccordions, setExpandedAccordions] = useState<number[]>([]);
+    const [expandedAccordions, setExpandedAccordions] = useState<string[]>([]);
+    const selected: string[] = props.value || [];
 
-    const toggleAccordion = (i: number) => {
-      if (expandedAccordions.includes(i))
-        expandedAccordions.splice(expandedAccordions.indexOf(i), 1);
-      else expandedAccordions.push(i);
-      setExpandedAccordions([...expandedAccordions]);
+    const toggleAccordion = (title: string) => {
+      setExpandedAccordions((current) =>
+        current.includes(title)
+          ? current.filter((item) => item !== title)
+          : [...current, title]
+      );
     };
 
-    const { getCheckboxProps } = useCheckboxGroup({
-      value: props.value,
-      onChange: (value) => {
-        // active all inbounds when a proxy selected
-        const selectedItem = value.filter((el) => !props.value.includes(el));
-        if (selectedItem[0]) {
-          form.setValue(
-            `inbounds.${selectedItem[0]}`,
-            useDashboard
-              .getState()
-              .inbounds.get(selectedItem[0] as ProtocolType)
-              ?.map((i) => i.tag)
-          );
-        }
+    const toggleProtocol = (title: string, checked: boolean) => {
+      const protocolInbounds =
+        useDashboard.getState().inbounds.get(title as ProtocolType) || [];
+      if (checked && protocolInbounds.length === 0) return;
 
-        setExpandedAccordions(
-          expandedAccordions.filter((i) => {
-            return value.find((title) => title === list[i].title);
-          })
+      const next = checked
+        ? selected.includes(title)
+          ? selected
+          : [...selected, title]
+        : selected.filter((item) => item !== title);
+
+      if (checked && !selected.includes(title)) {
+        form.setValue(
+          `inbounds.${title}`,
+          protocolInbounds.map((inbound) => inbound.tag)
         );
+      }
+      setExpandedAccordions((current) =>
+        current.filter((item) => next.includes(item))
+      );
 
-        onChange({
-          target: {
-            value,
-            name,
-          },
-        });
-      },
-    });
+      onChange({
+        target: {
+          value: next,
+          name,
+        },
+      });
+    };
 
     return (
-      <Accordion allowToggle index={expandedAccordions}>
-        <SimpleGrid
-          ref={ref}
-          gap={2}
-          alignItems="flex-start"
-          columns={1}
-          spacing={1}
-        >
-          {list.map((value, index) => {
-            return (
-              <RadioCard
-                toggleAccordion={toggleAccordion.bind(null, index)}
-                disabled={disabled}
-                key={value.title}
-                title={value.title}
-                description={value.description}
-                isSelected={
-                  !!(props.value as string[]).find((v) => v === value.title)
-                }
-                {...getCheckboxProps({ value: value.title })}
-              />
-            );
-          })}
-        </SimpleGrid>
+      <Accordion
+        type="multiple"
+        value={expandedAccordions}
+        onValueChange={setExpandedAccordions}
+      >
+        <div ref={ref} className="flex flex-col items-stretch gap-2">
+          {list.map((value) => (
+            <RadioCard
+              toggleAccordion={() => toggleAccordion(value.title)}
+              disabled={disabled}
+              key={value.title}
+              title={value.title}
+              description={value.description}
+              isSelected={selected.includes(value.title)}
+              onToggle={(checked) => toggleProtocol(value.title, checked)}
+            />
+          ))}
+        </div>
       </Accordion>
     );
   }

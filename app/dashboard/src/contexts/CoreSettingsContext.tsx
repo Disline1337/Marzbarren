@@ -5,12 +5,12 @@ type CoreSettingsStore = {
   isLoading: boolean;
   isPostLoading: boolean;
   fetchCoreSettings: () => void;
-  updateConfig: (json: string) => Promise<void>;
+  updateConfig: (body: Record<string, unknown>) => Promise<void>;
   restartCore: () => Promise<void>;
   version: string | null;
   started: boolean | null;
   logs_websocket: string | null;
-  config: string;
+  config: unknown;
 };
 
 export const useCoreSettings = create<CoreSettingsStore>((set) => ({
@@ -19,7 +19,7 @@ export const useCoreSettings = create<CoreSettingsStore>((set) => ({
   version: null,
   started: false,
   logs_websocket: null,
-  config: "",
+  config: {},
   fetchCoreSettings: () => {
     set({ isLoading: true });
     Promise.all([

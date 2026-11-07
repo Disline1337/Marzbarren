@@ -1,4 +1,3 @@
-import { ChakraProvider, localStorageManager } from "@chakra-ui/react";
 import dayjs from "dayjs";
 import Duration from "dayjs/plugin/duration";
 import LocalizedFormat from "dayjs/plugin/localizedFormat";
@@ -11,7 +10,9 @@ import ReactDOM from "react-dom/client";
 import { QueryClientProvider } from "react-query";
 import { queryClient } from "utils/react-query";
 import { updateThemeColor } from "utils/themeColor";
-import { theme } from "../chakra.config";
+import { ThemeProvider } from "components/theme-provider";
+import { TooltipProvider } from "components/ui/tooltip";
+import { Toaster } from "components/ui/sonner";
 import App from "./App";
 import "index.scss";
 
@@ -21,14 +22,19 @@ dayjs.extend(utc);
 dayjs.extend(RelativeTime);
 dayjs.extend(Duration);
 
-updateThemeColor(localStorageManager.get() || "light");
+const storedTheme =
+  (localStorage.getItem("theme") as "light" | "dark") || "light";
+updateThemeColor(storedTheme);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    <ChakraProvider theme={theme}>
+    <ThemeProvider>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <TooltipProvider delayDuration={200}>
+          <App />
+          <Toaster position="top-center" richColors closeButton />
+        </TooltipProvider>
       </QueryClientProvider>
-    </ChakraProvider>
+    </ThemeProvider>
   </React.StrictMode>
 );

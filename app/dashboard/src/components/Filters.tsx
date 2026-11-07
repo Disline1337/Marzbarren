@@ -1,40 +1,26 @@
 import {
-  BoxProps,
-  Button,
-  chakra,
-  Grid,
-  GridItem,
-  HStack,
-  IconButton,
-  Input,
-  InputGroup,
-  InputLeftElement,
-  InputRightElement,
-  Spinner,
-} from "@chakra-ui/react";
-import {
   ArrowPathIcon,
   MagnifyingGlassIcon,
   XMarkIcon,
 } from "@heroicons/react/24/outline";
 import classNames from "classnames";
+import { Button } from "components/ui/button";
+import { Input } from "components/ui/input";
 import { useDashboard } from "contexts/DashboardContext";
+import { cn } from "lib/utils";
 import debounce from "lodash.debounce";
-import React, { FC, useState } from "react";
+import React, { FC, HTMLAttributes } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-const iconProps = {
-  baseStyle: {
-    w: 4,
-    h: 4,
-  },
-};
+export const ReloadIcon = ({
+  className,
+  ...props
+}: React.ComponentProps<typeof ArrowPathIcon>) => (
+  <ArrowPathIcon className={cn("h-4 w-4", className)} {...props} />
+);
 
-const SearchIcon = chakra(MagnifyingGlassIcon, iconProps);
-const ClearIcon = chakra(XMarkIcon, iconProps);
-export const ReloadIcon = chakra(ArrowPathIcon, iconProps);
-
-export type FilterProps = {} & BoxProps;
+export type FilterProps = HTMLAttributes<HTMLDivElement>;
 const setSearchField = debounce((search: string) => {
   useDashboard.getState().onFilterChange({
     ...useDashboard.getState().filters,
@@ -43,7 +29,7 @@ const setSearchField = debounce((search: string) => {
   });
 }, 300);
 
-export const Filters: FC<FilterProps> = ({ ...props }) => {
+export const Filters: FC<FilterProps> = ({ className, ...props }) => {
   const { loading, filters, onFilterChange, refetchUsers, onCreateUser } =
     useDashboard();
   const { t } = useTranslation();
@@ -61,55 +47,62 @@ export const Filters: FC<FilterProps> = ({ ...props }) => {
     });
   };
   return (
-    <Grid
+    <div
       id="filters"
-      templateColumns={{
-        lg: "repeat(3, 1fr)",
-        md: "repeat(4, 1fr)",
-        base: "repeat(1, 1fr)",
-      }}
-      position="sticky"
-      top={0}
-      mx="-6"
-      px="6"
-      rowGap={4}
-      gap={{
-        lg: 4,
-        base: 0,
-      }}
-      bg="var(--chakra-colors-chakra-body-bg)"
-      py={4}
-      zIndex="docked"
+      className={cn(
+        "sticky top-0 z-10 mx-[-1.5rem] grid grid-cols-1 items-center gap-3 bg-background px-6 py-4 md:grid-cols-4 lg:grid-cols-3 lg:gap-4",
+        className
+      )}
       {...props}
     >
-      <GridItem colSpan={{ base: 1, md: 2, lg: 1 }} order={{ base: 2, md: 1 }}>
-        <InputGroup>
-          <InputLeftElement pointerEvents="none" children={<SearchIcon />} />
+      <div className="order-2 col-span-1 md:order-1 md:col-span-2 lg:col-span-1">
+        <div className="relative">
+          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            className="pl-9 pr-9"
             placeholder={t("search")}
             value={search}
-            borderColor="light-border"
             onChange={onChange}
           />
-
-          <InputRightElement>
-            {loading && <Spinner size="xs" />}
+          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+            {loading && (
+              <svg
+                className="h-3 w-3 animate-spin"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                />
+              </svg>
+            )}
             {filters.search && filters.search.length > 0 && (
-              <IconButton
+              <Button
                 onClick={clear}
                 aria-label="clear"
-                size="xs"
+                size="icon"
                 variant="ghost"
+                className="h-6 w-6"
               >
-                <ClearIcon />
-              </IconButton>
+                <XMarkIcon className="h-4 w-4" />
+              </Button>
             )}
-          </InputRightElement>
-        </InputGroup>
-      </GridItem>
-      <GridItem colSpan={2} order={{ base: 1, md: 2 }}>
-        <HStack justifyContent="flex-end" alignItems="center" h="full">
-          <IconButton
+          </div>
+        </div>
+      </div>
+      <div className="order-1 col-span-2 md:order-2">
+        <div className="flex h-full flex-row items-center justify-end gap-2">
+          <Button
             aria-label="refresh users"
             disabled={loading}
             onClick={refetchUsers}
@@ -121,17 +114,12 @@ export const Filters: FC<FilterProps> = ({ ...props }) => {
                 "animate-spin": loading,
               })}
             />
-          </IconButton>
-          <Button
-            colorScheme="primary"
-            size="sm"
-            onClick={() => onCreateUser(true)}
-            px={5}
-          >
+          </Button>
+          <Button size="sm" onClick={() => onCreateUser(true)} className="px-5">
             {t("createUser")}
           </Button>
-        </HStack>
-      </GridItem>
-    </Grid>
+        </div>
+      </div>
+    </div>
   );
 };

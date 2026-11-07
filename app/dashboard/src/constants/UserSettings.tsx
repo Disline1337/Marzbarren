@@ -1,25 +1,29 @@
-import { chakra, ChakraComponent} from "@chakra-ui/react";
 import {
   ClockIcon,
   ExclamationCircleIcon,
   NoSymbolIcon,
   WifiIcon,
 } from "@heroicons/react/24/outline";
+import { cn } from "lib/utils";
 import { ForwardRefExoticComponent, SVGProps } from "react";
 import { DataLimitResetStrategy } from "types/User";
 
-const iconProps = {
-  baseStyle: {
-    strokeWidth: "2px",
-    w: 4,
-    h: 4,
-  },
-};
-const ActiveStatusIcon = chakra(WifiIcon, iconProps);
-const DisabledStatusIcon = chakra(NoSymbolIcon, iconProps);
-const LimitedStatusIcon = chakra(ExclamationCircleIcon, iconProps);
-const ExpiredStatusIcon = chakra(ClockIcon, iconProps);
-const On_holdStatusIcon = chakra(ClockIcon, iconProps);
+export type StatusIcon = ForwardRefExoticComponent<
+  SVGProps<SVGSVGElement> & { title?: string; titleId?: string }
+>;
+
+function StatusIconEl(Icon: StatusIcon) {
+  const Wrapped = (props: SVGProps<SVGSVGElement>) => (
+    <Icon strokeWidth={2} {...props} className={cn("h-4 w-4", props.className)} />
+  );
+  return Wrapped;
+}
+
+const ActiveStatusIcon = StatusIconEl(WifiIcon);
+const DisabledStatusIcon = StatusIconEl(NoSymbolIcon);
+const LimitedStatusIcon = StatusIconEl(ExclamationCircleIcon);
+const ExpiredStatusIcon = StatusIconEl(ClockIcon);
+const On_holdStatusIcon = StatusIconEl(ClockIcon);
 
 export const resetStrategy: { title: string; value: DataLimitResetStrategy }[] =
   [
@@ -49,7 +53,7 @@ export const statusColors: {
   [key: string]: {
     statusColor: string;
     bandWidthColor: string;
-    icon: ChakraComponent<ForwardRefExoticComponent<SVGProps<SVGSVGElement>>>;
+    icon: (props: SVGProps<SVGSVGElement>) => JSX.Element;
   };
 } = {
   active: {

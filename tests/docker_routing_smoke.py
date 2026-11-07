@@ -149,8 +149,12 @@ def main():
               and "domain:ads.example.com" in happ_domains,
               "Happ JSON carries Xray routing rules")
         incy = sub(path, "INCY/1.0.0/Android")
-        incy_profile, _incy_text = routing_profile(incy.content, "incy")
-        check(incy_profile["DirectSites"] == ["example.com", "geosite:cn"], "INCY routing profile")
+        check(incy.status_code == 200 and incy.headers["content-type"].startswith("application/json"),
+              "INCY response is JSON")
+        incy_profile = routing_from_header(incy, "incy")
+        check(incy_profile["DirectSites"] == ["example.com", "geosite:cn"]
+              and b"incy://routing" not in incy.content and b"outbounds" in incy.content,
+              "INCY routing profile")
 
         for agent in ("koala-clash/1.0.0", "mihomo.party/v1.0.0 (clash.meta)"):
             loaded = yaml.safe_load(sub(path, agent).content)

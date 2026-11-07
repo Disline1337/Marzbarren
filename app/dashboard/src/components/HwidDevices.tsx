@@ -1,36 +1,27 @@
-import {
-  Alert,
-  AlertIcon,
-  AlertDialog,
-  AlertDialogBody,
-  AlertDialogContent,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogOverlay,
-  Box,
-  Button,
-  FormControl,
-  FormErrorMessage,
-  FormLabel,
-  HStack,
-  Input,
-  SimpleGrid,
-  Spinner,
-  Table,
-  Tbody,
-  Td,
-  Text,
-  Th,
-  Thead,
-  Tr,
-  useToast,
-  VStack,
-} from "@chakra-ui/react";
-import { FC, useRef, useState } from "react";
+import { FC, useState } from "react";
 import { useQuery } from "react-query";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { fetch } from "service/http";
 import { HwidDevice } from "types/User";
+import { Button } from "components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "components/ui/alert-dialog";
+import { Input } from "components/Input";
 
 function deviceUsage(
   count?: number | null,
@@ -62,8 +53,6 @@ export const HwidDevices: FC<HwidDevicesProps> = ({
   limit,
 }) => {
   const { t, i18n } = useTranslation();
-  const toast = useToast();
-  const cancelRef = useRef<HTMLButtonElement>(null);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState(emptyDevice);
   const [submitted, setSubmitted] = useState(false);
@@ -88,12 +77,9 @@ export const HwidDevices: FC<HwidDevicesProps> = ({
       : parsed.toLocaleString(i18n.language);
   };
   const notify = (key: string, status: "success" | "error") => {
-    toast({
-      title: t(`userDialog.${key}`),
-      status,
-      isClosable: true,
-      position: "top",
-    });
+    const message = t(`userDialog.${key}`);
+    if (status === "success") toast.success(message, { duration: 3000 });
+    else toast.error(message, { duration: 3000 });
   };
   const add = async () => {
     setSubmitted(true);
@@ -155,112 +141,104 @@ export const HwidDevices: FC<HwidDevicesProps> = ({
   };
 
   return (
-    <VStack
-      align="stretch"
-      spacing={3}
-      w="full"
-      mt={2}
-      borderTopWidth="1px"
-      pt={4}
-    >
-      <HStack justify="space-between" flexWrap="wrap">
-        <Text fontSize="sm" fontWeight="semibold">
+    <div className="mt-2 flex w-full flex-col gap-3 border-t pt-4">
+      <div className="flex flex-row flex-wrap items-center justify-between gap-2">
+        <p className="text-sm font-semibold">
           {t("userDialog.hwidDevices")} ({deviceUsage(data?.total, limit)})
-        </Text>
+        </p>
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="outline"
-          isLoading={isFetching}
-          isDisabled={locked}
+          disabled={locked || isFetching}
           onClick={() => refetch()}
         >
+          {isFetching && (
+            <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" aria-hidden>
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+          )}
           {t("userDialog.hwidRefresh")}
         </Button>
-      </HStack>
-      <Text fontSize="xs" color="gray.500">
+      </div>
+      <p className="text-xs text-muted-foreground">
         {t("userDialog.hwidImmediateHelp")}
-      </Text>
+      </p>
       {isError && (
-        <Alert status="error" fontSize="sm">
-          <AlertIcon />
+        <div className="rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {t("userDialog.hwidLoadError")}
-        </Alert>
+        </div>
       )}
       {isLoading ? (
-        <Spinner size="sm" />
+        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" aria-hidden>
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
       ) : !isError && devices.length === 0 ? (
-        <Text fontSize="sm" color="gray.500">
+        <p className="text-sm text-muted-foreground">
           {t("userDialog.hwidNoDevices")}
-        </Text>
+        </p>
       ) : (
         devices.length > 0 && (
-          <Box overflowX="auto" maxH="280px" overflowY="auto">
-            <Table size="sm">
-              <Thead>
-                <Tr>
-                  <Th>{t("userDialog.hwid")}</Th>
-                  <Th>{t("userDialog.hwidPlatform")}</Th>
-                  <Th>{t("userDialog.hwidLastSeen")}</Th>
-                  <Th>
-                    <Text as="span" srOnly>
-                      {t("delete")}
-                    </Text>
-                  </Th>
-                </Tr>
-              </Thead>
-              <Tbody>
+          <div className="max-h-[280px] overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("userDialog.hwid")}</TableHead>
+                  <TableHead>{t("userDialog.hwidPlatform")}</TableHead>
+                  <TableHead>{t("userDialog.hwidLastSeen")}</TableHead>
+                  <TableHead>
+                    <span className="sr-only">{t("delete")}</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {devices.map((device) => (
-                  <Tr key={device.hwid}>
-                    <Td>
-                      <Text
-                        fontFamily="mono"
-                        fontSize="xs"
-                        userSelect="all"
-                        maxW="180px"
-                        overflowWrap="anywhere"
-                      >
+                  <TableRow key={device.hwid}>
+                    <TableCell>
+                      <p className="max-w-[180px] select-all break-all font-mono text-xs">
                         {device.hwid}
-                      </Text>
-                      <Text fontSize="xs" color="gray.500">
+                      </p>
+                      <p className="text-xs text-muted-foreground">
                         {device.request_ip || "—"}
-                      </Text>
-                    </Td>
-                    <Td fontSize="xs">
-                      <Text>
+                      </p>
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      <p>
                         {[device.platform, device.os_version]
                           .filter(Boolean)
                           .join(" ") || "—"}
-                      </Text>
-                      <Text color="gray.500">{device.device_model || "—"}</Text>
-                    </Td>
-                    <Td fontSize="xs" whiteSpace="nowrap">
+                      </p>
+                      <p className="text-muted-foreground">{device.device_model || "—"}</p>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-xs">
                       {date(device.updated_at)}
-                    </Td>
-                    <Td>
+                    </TableCell>
+                    <TableCell>
                       <Button
                         type="button"
-                        size="xs"
+                        size="sm"
                         variant="ghost"
-                        colorScheme="red"
-                        isDisabled={locked}
+                        className="text-destructive"
+                        disabled={locked}
                         onClick={() => setTarget(device)}
                       >
                         {t("delete")}
                       </Button>
-                    </Td>
-                  </Tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </Tbody>
+              </TableBody>
             </Table>
-          </Box>
+          </div>
         )
       )}
-      <HStack justify="space-between" flexWrap="wrap">
+      <div className="flex flex-row flex-wrap items-center justify-between gap-2">
         <Button
           type="button"
-          size="xs"
-          isDisabled={locked || adding}
+          size="sm"
+          disabled={locked || adding}
           onClick={() => setAdding(true)}
         >
           {t("userDialog.hwidAdd")}
@@ -268,23 +246,19 @@ export const HwidDevices: FC<HwidDevicesProps> = ({
         {devices.length > 0 && (
           <Button
             type="button"
-            size="xs"
+            size="sm"
             variant="outline"
-            colorScheme="red"
-            isDisabled={locked}
+            className="border-destructive text-destructive"
+            disabled={locked}
             onClick={() => setTarget("all")}
           >
             {t("userDialog.hwidDeleteAll")}
           </Button>
         )}
-      </HStack>
+      </div>
       {adding && (
-        <VStack
-          align="stretch"
-          spacing={3}
-          borderWidth="1px"
-          borderRadius="md"
-          p={3}
+        <div
+          className="flex flex-col gap-3 rounded-md border p-3"
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();
@@ -293,60 +267,51 @@ export const HwidDevices: FC<HwidDevicesProps> = ({
             }
           }}
         >
-          <FormControl isInvalid={submitted && !validHwid}>
-            <FormLabel fontSize="sm" htmlFor="hwid-new-id">
-              {t("userDialog.hwid")}
-            </FormLabel>
-            <Input
-              id="hwid-new-id"
-              size="sm"
-              value={draft.hwid}
-              maxLength={64}
-              isDisabled={locked}
-              onChange={(event) =>
-                setDraft({ ...draft, hwid: event.target.value })
-              }
-            />
-            <FormErrorMessage>{t("userDialog.hwidInvalid")}</FormErrorMessage>
-          </FormControl>
-          <SimpleGrid columns={{ base: 1, md: 3 }} spacing={2}>
+          <Input
+            id="hwid-new-id"
+            label={t("userDialog.hwid")}
+            value={draft.hwid}
+            maxLength={64}
+            disabled={locked}
+            error={submitted && !validHwid ? t("userDialog.hwidInvalid") : undefined}
+            onChange={(event) =>
+              setDraft({ ...draft, hwid: event.target.value })
+            }
+          />
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
             {(["platform", "os_version", "device_model"] as const).map(
               (key) => (
-                <FormControl key={key}>
-                  <FormLabel fontSize="xs" htmlFor={`hwid-new-${key}`}>
-                    {t(
-                      `userDialog.${
-                        {
-                          platform: "hwidPlatform",
-                          os_version: "hwidOsVersion",
-                          device_model: "hwidModel",
-                        }[key]
-                      }`
-                    )}
-                  </FormLabel>
-                  <Input
-                    id={`hwid-new-${key}`}
-                    size="sm"
-                    value={draft[key]}
-                    maxLength={key === "device_model" ? 128 : 64}
-                    isDisabled={locked}
-                    onChange={(event) =>
-                      setDraft({ ...draft, [key]: event.target.value })
-                    }
-                  />
-                </FormControl>
+                <Input
+                  key={key}
+                  id={`hwid-new-${key}`}
+                  label={t(
+                    `userDialog.${
+                      {
+                        platform: "hwidPlatform",
+                        os_version: "hwidOsVersion",
+                        device_model: "hwidModel",
+                      }[key]
+                    }`
+                  )}
+                  value={draft[key]}
+                  maxLength={key === "device_model" ? 128 : 64}
+                  disabled={locked}
+                  onChange={(event) =>
+                    setDraft({ ...draft, [key]: event.target.value })
+                  }
+                />
               )
             )}
-          </SimpleGrid>
-          <Text fontSize="xs" color="gray.500">
+          </div>
+          <p className="text-xs text-muted-foreground">
             {t("userDialog.hwidManualHelp")}
-          </Text>
-          <HStack justify="end">
+          </p>
+          <div className="flex flex-row items-center justify-end gap-2">
             <Button
               type="button"
               size="sm"
               variant="ghost"
-              isDisabled={locked}
+              disabled={locked}
               onClick={() => {
                 setAdding(false);
                 setDraft(emptyDevice);
@@ -358,73 +323,69 @@ export const HwidDevices: FC<HwidDevicesProps> = ({
             <Button
               type="button"
               size="sm"
-              colorScheme="blue"
-              isLoading={busy}
-              isDisabled={disabled}
+              disabled={disabled || busy}
               onClick={add}
             >
+              {busy && (
+                <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" aria-hidden>
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
+              )}
               {t("userDialog.hwidAdd")}
             </Button>
-          </HStack>
-        </VStack>
+          </div>
+        </div>
       )}
       <AlertDialog
-        isOpen={target !== null}
-        leastDestructiveRef={cancelRef}
-        onClose={() => {
-          if (!busy) setTarget(null);
+        open={target !== null}
+        onOpenChange={(open) => {
+          if (!open && !busy) setTarget(null);
         }}
-        closeOnOverlayClick={!busy}
-        closeOnEsc={!busy}
       >
-        <AlertDialogOverlay>
-          <AlertDialogContent mx={3}>
-            <AlertDialogHeader>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
               {t(target === "all" ? "userDialog.hwidDeleteAll" : "delete")}
-            </AlertDialogHeader>
-            <AlertDialogBody>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               {t(
                 target === "all"
                   ? "userDialog.hwidConfirmAll"
                   : "userDialog.hwidConfirmDelete"
               )}
-              {target && target !== "all" && (
-                <Text
-                  fontFamily="mono"
-                  fontSize="sm"
-                  mt={2}
-                  overflowWrap="anywhere"
-                >
-                  {target.hwid}
-                </Text>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {target && target !== "all" && (
+            <p className="break-all font-mono text-sm">{target.hwid}</p>
+          )}
+          <p className="text-sm">{t("userDialog.hwidDeleteHelp")}</p>
+          <AlertDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={() => setTarget(null)}
+            >
+              {t("cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={disabled || busy}
+              onClick={remove}
+            >
+              {busy && (
+                <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" aria-hidden>
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                </svg>
               )}
-              <Text fontSize="sm" mt={2}>
-                {t("userDialog.hwidDeleteHelp")}
-              </Text>
-            </AlertDialogBody>
-            <AlertDialogFooter>
-              <Button
-                type="button"
-                ref={cancelRef}
-                isDisabled={busy}
-                onClick={() => setTarget(null)}
-              >
-                {t("cancel")}
-              </Button>
-              <Button
-                type="button"
-                colorScheme="red"
-                ml={3}
-                isLoading={busy}
-                isDisabled={disabled}
-                onClick={remove}
-              >
-                {t("delete")}
-              </Button>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialogOverlay>
+              {t("delete")}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
       </AlertDialog>
-    </VStack>
+    </div>
   );
 };

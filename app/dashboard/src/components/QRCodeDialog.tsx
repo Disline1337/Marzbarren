@@ -1,58 +1,57 @@
 import {
-  Box,
-  chakra,
-  HStack,
-  IconButton,
-  Modal,
-  ModalBody,
-  ModalCloseButton,
-  ModalContent,
-  ModalHeader,
-  ModalOverlay,
-  Text,
-  VStack,
-} from "@chakra-ui/react";
-import {
   ChevronLeftIcon,
   ChevronRightIcon,
   QrCodeIcon,
 } from "@heroicons/react/24/outline";
 import { QRCodeCanvas } from "qrcode.react";
-import { FC, useState } from "react";
+import { CSSProperties, FC, ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import Slider from "react-slick";
 import "slick-carousel/slick/slick-theme.css";
 import "slick-carousel/slick/slick.css";
 import { useDashboard } from "../contexts/DashboardContext";
+import { Button } from "./ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+} from "./ui/dialog";
 import { Icon } from "./Icon";
+import { cn } from "lib/utils";
 
-const QRCode = chakra(QRCodeCanvas);
-const NextIcon = chakra(ChevronRightIcon, {
-  baseStyle: {
-    w: 6,
-    h: 6,
-    color: "gray.600",
-    _dark: {
-      color: "white",
-    },
-  },
-});
-const PrevIcon = chakra(ChevronLeftIcon, {
-  baseStyle: {
-    w: 6,
-    h: 6,
-    color: "gray.600",
-    _dark: {
-      color: "white",
-    },
-  },
-});
-const QRIcon = chakra(QrCodeIcon, {
-  baseStyle: {
-    w: 5,
-    h: 5,
-  },
-});
+type SliderArrowProps = {
+  className?: string;
+  style?: CSSProperties;
+  onClick?: () => void;
+  currentSlide?: number;
+  slideCount?: number;
+  children?: ReactNode;
+  "aria-label": string;
+};
+
+const SliderArrow: FC<SliderArrowProps> = ({
+  className,
+  style,
+  onClick,
+  currentSlide: _currentSlide,
+  slideCount: _slideCount,
+  children,
+  ...rest
+}) => (
+  <Button
+    type="button"
+    variant="ghost"
+    size="icon"
+    className={cn("!flex before:content-['']", className)}
+    style={style}
+    onClick={onClick}
+    {...rest}
+  >
+    {children}
+  </Button>
+);
+
+const qrClassName = "mx-auto bg-white p-2";
 
 export const QRCodeDialog: FC = () => {
   const { QRcodeLinks, setQRCode, setSubLink, subscribeUrl } = useDashboard();
@@ -69,51 +68,35 @@ export const QRCodeDialog: FC = () => {
     : String(subscribeUrl);
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose}>
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-      <ModalContent mx="3" w="fit-content" maxW="3xl">
-        <ModalHeader pt={6}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="mx-3 w-fit max-w-3xl">
+        <DialogHeader>
           <Icon color="primary">
-            <QRIcon color="white" />
+            <QrCodeIcon className="h-5 w-5 text-white" />
           </Icon>
-        </ModalHeader>
-        <ModalCloseButton mt={3} />
+        </DialogHeader>
         {QRcodeLinks && (
-          <ModalBody
-            gap={{
-              base: "20px",
-              lg: "50px",
-            }}
-            pr={{
-              lg: "60px",
-            }}
-            px={{
-              base: "50px",
-            }}
-            display="flex"
-            justifyContent="center"
-            flexDirection={{
-              base: "column",
-              lg: "row",
-            }}
-          >
+          <div className="flex flex-col items-center justify-center gap-5 px-[50px] lg:flex-row lg:gap-[50px] lg:pr-[60px]">
             {subscribeUrl && (
-              <VStack>
-                <QRCode
-                  mx="auto"
+              <div className="flex flex-col items-center gap-2">
+                <QRCodeCanvas
+                  className={qrClassName}
                   size={300}
-                  p="2"
                   level={"L"}
                   includeMargin={false}
                   value={subscribeQrLink}
-                  bg="white"
                 />
-                <Text display="block" textAlign="center" pb={3} mt={1}>
+                <p className="mt-1 block pb-3 text-center">
                   {t("qrcodeDialog.sublink")}
-                </Text>
-              </VStack>
+                </p>
+              </div>
             )}
-            <Box w="300px">
+            <div className="w-[300px]">
               <Slider
                 centerPadding="0px"
                 centerMode={true}
@@ -123,53 +106,37 @@ export const QRCodeDialog: FC = () => {
                 afterChange={setIndex}
                 onInit={() => setIndex(0)}
                 nextArrow={
-                  <IconButton
-                    size="sm"
-                    position="absolute"
-                    display="flex !important"
-                    _before={{ content: '""' }}
-                    aria-label="next"
-                    mr="-4"
-                  >
-                    <NextIcon />
-                  </IconButton>
+                  <SliderArrow aria-label="next">
+                    <ChevronRightIcon className="h-6 w-6 text-gray-600 dark:text-white" />
+                  </SliderArrow>
                 }
                 prevArrow={
-                  <IconButton
-                    size="sm"
-                    position="absolute"
-                    display="flex !important"
-                    _before={{ content: '""' }}
-                    aria-label="prev"
-                    ml="-4"
-                  >
-                    <PrevIcon />
-                  </IconButton>
+                  <SliderArrow aria-label="prev">
+                    <ChevronLeftIcon className="h-6 w-6 text-gray-600 dark:text-white" />
+                  </SliderArrow>
                 }
               >
                 {QRcodeLinks.map((link, i) => {
                   return (
-                    <HStack key={i}>
-                      <QRCode
-                        mx="auto"
+                    <div key={i} className="flex flex-row items-center">
+                      <QRCodeCanvas
+                        className={qrClassName}
                         size={300}
-                        p="2"
                         level={"L"}
                         includeMargin={false}
                         value={link}
-                        bg="white"
                       />
-                    </HStack>
+                    </div>
                   );
                 })}
               </Slider>
-              <Text display="block" textAlign="center" pb={3} mt={1}>
+              <p className="mt-1 block pb-3 text-center">
                 {index + 1} / {QRcodeLinks.length}
-              </Text>
-            </Box>
-          </ModalBody>
+              </p>
+            </div>
+          </div>
         )}
-      </ModalContent>
-    </Modal>
+      </DialogContent>
+    </Dialog>
   );
 };

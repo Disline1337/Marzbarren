@@ -2,7 +2,7 @@ ARG PYTHON_VERSION=3.14
 
 FROM node:22-bookworm-slim AS dashboard
 WORKDIR /dashboard
-COPY app/dashboard/package*.json app/dashboard/chakra.config.ts ./
+COPY app/dashboard/package*.json ./
 RUN npm ci
 COPY app/dashboard/ ./
 RUN VITE_BASE_API=/api/ npm run build -- --outDir build --assetsDir statics \

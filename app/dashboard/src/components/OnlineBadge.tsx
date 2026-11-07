@@ -1,4 +1,3 @@
-import { Box } from "@chakra-ui/react";
 import { FC } from "react";
 
 type UserStatusProps = {
@@ -18,26 +17,15 @@ export const OnlineBadge: FC<UserStatusProps> = ({ lastOnline }) => {
 
   if (!lastOnline || unixTime === null) {
     return (
-      <Box
-        border="1px solid"
-        borderColor="gray.400"
-        _dark={{ borderColor: "gray.600" }}
-        className="circle"
-      />
+      <div className="circle border border-gray-400 dark:border-gray-600" />
     );
   }
 
   const timeDifferenceInSeconds = currentTimeInSeconds - unixTime;
 
   if (timeDifferenceInSeconds <= 60) {
-    return (
-      <Box
-        bg="green.300"
-        _dark={{ bg: "green.500" }}
-        className="circle pulse green"
-      />
-    );
+    return <div className="circle pulse green bg-green-300 dark:bg-green-500" />;
   }
 
-  return <Box bg="gray.400" _dark={{ bg: "gray.600" }} className="circle" />;
+  return <div className="circle bg-gray-400 dark:bg-gray-600" />;
 };

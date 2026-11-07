@@ -1,16 +1,11 @@
 import {
-  Button,
-  Modal,
-  ModalBody,
-  ModalCloseButton,
-  ModalContent,
-  ModalFooter,
-  ModalHeader,
-  ModalOverlay,
-  Spinner,
-  Text,
-  useToast,
-} from "@chakra-ui/react";
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "components/ui/alert-dialog";
+import { Button } from "components/ui/button";
 import { FetchNodesQueryKey, useNodes } from "contexts/NodesContext";
 import { FC } from "react";
 import { Trans, useTranslation } from "react-i18next";
@@ -27,7 +22,6 @@ export const DeleteNodeModal: FC<DeleteUserModalProps> = ({
 }) => {
   const { deleteNode, deletingNode, setDeletingNode } = useNodes();
   const { t } = useTranslation();
-  const toast = useToast();
   const queryClient = useQueryClient();
   const onClose = () => {
     setDeletingNode(null);
@@ -36,60 +30,60 @@ export const DeleteNodeModal: FC<DeleteUserModalProps> = ({
   const { isLoading, mutate: onDelete } = useMutation(deleteNode, {
     onSuccess: () => {
       generateSuccessMessage(
-        t("deleteNode.deleteSuccess", {name: deletingNode && deletingNode.name}),
-        toast
+        t("deleteNode.deleteSuccess", { name: deletingNode && deletingNode.name })
       );
       setDeletingNode(null);
       queryClient.invalidateQueries(FetchNodesQueryKey);
       deleteCallback && deleteCallback();
     },
     onError: (e) => {
-      generateErrorMessage(e, toast);
+      generateErrorMessage(e);
     },
   });
 
   return (
-    <Modal isCentered isOpen={!!deletingNode} onClose={onClose} size="sm">
-      <ModalOverlay bg="blackAlpha.300" backdropFilter="blur(10px)" />
-      <ModalContent mx="3">
-        <ModalHeader pt={6}>
+    <AlertDialog
+      open={!!deletingNode}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <AlertDialogContent className="mx-3 max-w-sm">
+        <AlertDialogHeader className="pt-2">
           <Icon color="red">
             <DeleteIcon />
           </Icon>
-        </ModalHeader>
-        <ModalCloseButton mt={3} />
-        <ModalBody>
-          <Text fontWeight="semibold" fontSize="lg">
+          <AlertDialogTitle className="text-lg">
             {t("deleteNode.title")}
-          </Text>
-          {deletingNode && (
-            <Text
-              mt={1}
-              fontSize="sm"
-              _dark={{ color: "gray.400" }}
-              color="gray.600"
-            >
-              <Trans components={{ b: <b /> }}>
-                {t("deleteNode.prompt", {name: deletingNode.name})}
-              </Trans>
-            </Text>
-          )}
-        </ModalBody>
-        <ModalFooter display="flex">
-          <Button size="sm" onClick={onClose} mr={3} w="full" variant="outline">
+          </AlertDialogTitle>
+        </AlertDialogHeader>
+        {deletingNode && (
+          <p className="text-sm text-muted-foreground">
+            <Trans components={{ b: <b /> }}>
+              {t("deleteNode.prompt", { name: deletingNode.name })}
+            </Trans>
+          </p>
+        )}
+        <AlertDialogFooter className="flex sm:justify-stretch">
+          <Button
+            size="sm"
+            onClick={onClose}
+            className="w-full"
+            variant="outline"
+          >
             {t("cancel")}
           </Button>
           <Button
             size="sm"
-            w="full"
-            colorScheme="red"
+            className="w-full"
+            variant="destructive"
             onClick={() => onDelete()}
-            leftIcon={isLoading ? <Spinner size="xs" /> : undefined}
+            disabled={isLoading}
           >
             {t("delete")}
           </Button>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 };
